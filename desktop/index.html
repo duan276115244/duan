@@ -1,0 +1,64 @@
+<!--
+  ⚠️ DEPRECATED (D11): 此文件未被 Electron 主进程加载。
+  主窗口实际加载 frontend/dist/index.html（由 window-manager.js 的 FRONTEND_DIST 决定）。
+  此文件仅保留在 SELF_IMPROVE_WHITELIST 中供历史兼容；请勿在此处修改 UI。
+  如需修改前端界面，请编辑 frontend/src/ 下的 React 代码并重新 build。
+-->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>段先生 - 您的私人智能助手</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            color: #fff;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .fallback {
+            text-align: center;
+            padding: 40px;
+        }
+        .fallback h1 {
+            font-size: 28px;
+            background: linear-gradient(90deg, #00d9ff, #00ff88);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 12px;
+        }
+        .fallback p {
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 14px;
+            line-height: 1.8;
+        }
+        .version {
+            margin-top: 20px;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.35);
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <!--
+      4.2 清理说明：
+      此文件原为 pre-React 原型页（416 行内联 CSS+JS），从未被 Electron 加载
+      （main.js 的 getFrontendUrl() 加载的是 frontend/dist/index.html）。
+      原文件中的 voice:proactive-announce TTS 监听已迁移至
+      frontend/src/hooks/useProactiveVoice.ts，由 React 应用订阅。
+      此处保留最小外壳仅作为应急回退页面。
+    -->
+    <div class="fallback">
+        <h1>🤖 段先生</h1>
+        <p>桌面应用加载中…</p>
+        <p>若持续停留在此页，请检查 <code>frontend/dist</code> 构建产物是否存在。</p>
+        <div class="version">段先生 v19.0 · Desktop Fallback</div>
+    </div>
+</body>
+</html>

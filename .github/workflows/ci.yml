@@ -1,0 +1,75 @@
+# ============================================================
+# CI — 段先生 v19.0 持续集成
+#
+# 触发：push 到 main/master、PR 到 main/master
+#
+# 阶段：
+#   1. typecheck  — TypeScript 类型检查
+#   2. lint       — ESLint 代码规范
+#   3. test       — Vitest 单元测试
+#   4. capability — 能力评估回归检查（对比 baseline）
+#
+# capability 阶段会在 baseline 缺失时自动首次建立 baseline，
+# 后续 PR 若使总分下降 ≥10 分或维度分下降 ≥15 分则失败。
+# ============================================================
+
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  verify:
+    name: Verify (typecheck + lint + test + capability)
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build:frontend
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm run test
+
+      - name: Capability baseline (首次建立，若不存在)
+        run: |
+          if not exist "%USERPROFILE%\.duan\capability-assessment\baseline.json" (
+            echo No baseline found, creating initial baseline...
+            npm run capability:baseline
+          ) else (
+            echo Baseline exists, skipping creation.
+          )
+        shell: cmd
+
+      - name: Capability regression check
+        run: npm run capability:check
+
+      - name: Upload capability report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capability-report
+          path: |
+            ${{ runner.os == 'Windows' && 'C:\\Users\\runneradmin\\.duan\\capability-assessment\\*.json' || '~/.duan/capability-assessment/*.json' }}
+          if-no-files-found: ignore

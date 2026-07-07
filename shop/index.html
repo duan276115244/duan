@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ShopMall · 现代电商首页</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- 顶部小条 -->
+<div class="topbar">
+  <div class="container">
+    <span>📞 客服热线 400-888-8888  |  全场满199包邮</span>
+    <div class="links">
+      <a href="#">商家入驻</a>
+      <a href="#">客户服务</a>
+      <a href="#">网站导航</a>
+    </div>
+  </div>
+</div>
+
+<!-- 头部导航 -->
+<header class="header">
+  <div class="container nav">
+    <a href="#" class="logo">
+      <span class="logo-icon">🛍</span>
+      <span>ShopMall</span>
+    </a>
+    <nav class="menu" id="menu">
+      <a href="#">首页</a>
+      <a href="#">服装</a>
+      <a href="#">数码</a>
+      <a href="#">家居</a>
+      <a href="#">美妆</a>
+      <a href="#">食品</a>
+    </nav>
+    <div class="search">
+      <input type="text" placeholder="搜索您喜欢的商品...">
+      <button>🔍</button>
+    </div>
+    <div class="actions">
+      <a href="#">👤 <span class="hide-sm">登录/注册</span></a>
+      <a href="#" id="cartBtn">🛒 <span class="hide-sm">购物车</span><span class="cart-badge" id="cartBadge">3</span></a>
+    </div>
+    <div class="menu-toggle" id="menuToggle">☰</div>
+  </div>
+</header>
+
+<main class="container">
+
+  <!-- 轮播 Banner -->
+  <section class="banner">
+    <div class="carousel" id="carousel">
+      <div class="slides" id="slides">
+        <div class="slide slide-1">
+          <div class="slide-content">
+            <h2>夏季新品发布</h2>
+            <p>潮流单品 全场低至5折起 · 满399减100</p>
+            <a href="#" class="btn">立即抢购 →</a>
+          </div>
+        </div>
+        <div class="slide slide-2">
+          <div class="slide-content">
+            <h2>科技新品上市</h2>
+            <p>智能数码 引领未来生活方式</p>
+            <a href="#" class="btn">探索更多 →</a>
+          </div>
+        </div>
+        <div class="slide slide-3">
+          <div class="slide-content">
+            <h2>美妆护肤盛典</h2>
+            <p>大牌好物 · 买二送一 · 限时特惠</p>
+            <a href="#" class="btn">查看详情 →</a>
+          </div>
+        </div>
+        <div class="slide slide-4">
+          <div class="slide-content">
+            <h2>家居生活季</h2>
+            <p>打造温馨小家 全屋焕新优惠中</p>
+            <a href="#" class="btn">马上选购 →</a>
+          </div>
+        </div>
+      </div>
+      <button class="carousel-btn prev" id="prev">‹</button>
+      <button class="carousel-btn next" id="next">›</button>
+      <div class="dots" id="dots"></div>
+    </div>
+  </section>
+
+  <!-- 分类导航 -->
+  <section class="section">
+    <div class="section-header">
+      <div>
+        <h2 class="section-title">商品分类</h2>
+        <p class="section-subtitle">海量好物 一键直达</p>
+      </div>
+    </div>
+    <div class="categories" id="categories"></div>
+  </section>
+
+  <!-- 限时秒杀 -->
+  <section class="section">
+    <div class="flash-sale">
+      <div class="flash-header">
+        <div class="flash-title">
+          <span class="icon">⚡</span>
+          <h2>限时秒杀</h2>
+          <span style="color:var(--text-light);font-size:14px">距结束仅剩</span>
+          <div class="countdown" id="countdown">
+            <span class="time-block" id="hh">12</span>
+            <span class="time-sep">:</span>
+            <span class="time-block" id="mm">34</span>
+            <span class="time-sep">:</span>
+            <span class="time-block" id="ss">56</span>
+          </div>
+        </div>
+        <a href="#" class="more-link">查看更多 →</a>
+      </div>
+      <div class="flash-grid" id="flashGrid"></div>
+    </div>
+  </section>
+
+  <!-- 商品推荐 -->
+  <section class="section">
+    <div class="section-header">
+      <div>
+        <h2 class="section-title">为你推荐</h2>
+        <p class="section-subtitle">精选好物 品质之选</p>
+      </div>
+      <a href="#" class="more-link">查看全部 →</a>
+    </div>
+    <div class="products-grid" id="productsGrid"></div>
+  </section>
+
+  <!-- 品牌专区 -->
+  <section class="section">
+    <div class="section-header">
+      <div>
+        <h2 class="section-title">品牌专区</h2>
+        <p class="section-subtitle">国际知名品牌 正品保障</p>
+      </div>
+    </div>
+    <div class="brands" id="brands"></div>
+  </section>
+
+</main>
+
+<!-- 页脚 -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div class="footer-col">
+        <h3>关于我们</h3>
+        <ul>
+          <li><a href="#">公司简介</a></li>
+          <li><a href="#">招聘信息</a></li>
+          <li><a href="#">联系我们</a></li>
+          <li><a href="#">商家入驻</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h3>客户服务</h3>
+        <ul>
+          <li><a href="#">帮助中心</a></li>
+          <li><a href="#">售后服务</a></li>
+          <li><a href="#">退换货政策</a></li>
+          <li><a href="#">运费说明</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h3>支付方式</h3>
+        <div class="pay-methods">
+          <span>💳 信用卡</span>
+          <span>📱 支付宝</span>
+          <span>💚 微信支付</span>
+          <span>🏦 网银</span>
+        </div>
+      </div>
+      <div class="footer-col">
+        <h3>联系信息</h3>
+        <ul class="contact">
+          <li>📞 400-888-8888</li>
+          <li>✉ service@shopmall.com</li>
+          <li>📍 上海市浦东新区</li>
+          <li>⏰ 周一至周日 9:00-22:00</li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      © 2025 ShopMall · 保留所有权利 · 沪ICP备12345678号
+    </div>
+  </div>
+</footer>
+
+<script src="script.js"></script>
+</body>
+</html>

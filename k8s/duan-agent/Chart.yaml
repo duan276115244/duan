@@ -1,0 +1,16 @@
+apiVersion: v2
+name: duan-agent
+description: 段先生 v17.0 超级智能体 — Helm Chart
+type: application
+version: 17.0.0
+appVersion: "17.0.0"
+keywords:
+  - ai-agent
+  - assistant
+  - jarvis
+home: https://github.com/duan/duan-agent
+sources:
+  - https://github.com/duan/duan-agent
+maintainers:
+  - name: Duan Team
+    email: dev@duan.ai

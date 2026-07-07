@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>段先生 v19.0 - 自主意识仪表盘</title>
+  <style>
+    :root {
+      --primary: #00ff88; --secondary: #00d9ff; --accent: #ff6b6b;
+      --accent2: #a78bfa; --accent3: #ffaa00;
+      --bg-dark: #08080d; --bg-card: #0f0f18; --bg-card2: #141422;
+      --border: #1e1e30; --text: #f0f0f5; --text-muted: #6b6b80;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+      background: var(--bg-dark); color: var(--text);
+      padding: 20px; min-height: 100vh;
+    }
+    .header {
+      background: linear-gradient(135deg, rgba(0,255,136,0.05), rgba(0,217,255,0.05));
+      border: 1px solid var(--border); border-radius: 16px;
+      padding: 20px 28px; margin-bottom: 24px;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .header h1 { font-size: 20px; background: linear-gradient(135deg, var(--primary), var(--secondary)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .header .status { display: flex; gap: 16px; align-items: center; }
+    .badge { padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+    .badge.online { background: rgba(0,255,136,0.15); color: var(--primary); border: 1px solid rgba(0,255,136,0.3); }
+    .nav { display: flex; gap: 8px; margin-bottom: 24px; flex-wrap: wrap; }
+    .nav button {
+      padding: 8px 18px; border-radius: 10px; border: 1px solid var(--border);
+      background: var(--bg-card); color: var(--text-muted); cursor: pointer;
+      font-size: 13px; transition: all 0.2s;
+    }
+    .nav button:hover, .nav button.active { background: var(--bg-card2); color: var(--text); border-color: var(--primary); }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .card {
+      background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px;
+      padding: 18px; transition: all 0.2s;
+    }
+    .card:hover { border-color: rgba(0,255,136,0.2); box-shadow: 0 0 20px rgba(0,255,136,0.03); }
+    .card h2 { font-size: 14px; color: var(--text-muted); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .card .value { font-size: 28px; font-weight: 700; }
+    .row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 13px; }
+    .row .label { color: var(--text-muted); }
+    .row .val { color: var(--text); }
+    .bar { height: 4px; border-radius: 2px; background: var(--border); margin: 6px 0; overflow: hidden; }
+    .bar-fill { height: 100%; border-radius: 2px; transition: width 0.5s; }
+    .tag { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 11px; background: rgba(255,255,255,0.06); margin: 2px; }
+    .thought { padding: 8px; background: rgba(0,217,255,0.04); border-left: 2px solid var(--secondary); border-radius: 6px; margin: 6px 0; font-size: 12px; color: var(--text-muted); }
+    .btn {
+      padding: 8px 20px; border-radius: 10px; border: none; cursor: pointer;
+      font-weight: 600; font-size: 13px; transition: all 0.2s;
+    }
+    .btn-primary { background: linear-gradient(135deg, var(--primary), var(--secondary)); color: #000; }
+    .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 20px rgba(0,255,136,0.2); }
+    .btn-danger { background: linear-gradient(135deg, var(--accent), #ff4444); color: #fff; }
+    .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
+    .btn-outline:hover { border-color: var(--primary); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .toast {
+      position: fixed; bottom: 24px; right: 24px; padding: 14px 24px;
+      border-radius: 12px; background: var(--bg-card2); border: 1px solid var(--border);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+      transform: translateY(120%); transition: transform 0.3s; z-index: 999;
+    }
+    .toast.show { transform: translateY(0); }
+    .toast.success { border-color: var(--primary); }
+    .toast.error { border-color: var(--accent); }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+    .live-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--primary); animation: pulse 1.5s infinite; margin-right: 6px; }
+    pre { font-size: 11px; color: var(--text-muted); overflow-x: auto; white-space: pre-wrap; word-break: break-all; max-height: 200px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <h1>🧠 段先生 · 自主意识仪表盘</h1>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:4px">v19.0 — Autonomous Consciousness Dashboard</div>
+    </div>
+    <div class="status">
+      <span id="heartbeatBadge" class="badge online"><span class="live-dot"></span>心跳运行中</span>
+      <span id="moodBadge" class="badge">🧠 focused</span>
+    </div>
+  </div>
+
+  <div class="nav">
+    <button class="active" onclick="switchTab('overview')">📊 总览</button>
+    <button onclick="switchTab('consciousness')">💭 意识</button>
+    <button onclick="switchTab('goals')">🎯 目标</button>
+    <button onclick="switchTab('values')">⚖️ 价值观</button>
+    <button onclick="switchTab('evolution')">🧬 进化</button>
+    <button onclick="switchTab('agents')">🤖 子Agent</button>
+    <button onclick="switchTab('heartbeat')">💓 心跳</button>
+    <button onclick="switchTab('strategies')">🧠 策略</button>
+    <button onclick="switchTab('skills')">📚 技能</button>
+    <button onclick="switchTab('assessment')">📊 评估</button>
+    <button onclick="switchTab('plans')">📋 计划</button>
+    <button onclick="switchTab('multiagent')">🤖 多Agent</button>
+    <button onclick="refreshAll()" style="margin-left:auto;border-color:var(--secondary)">🔄 刷新</button>
+  </div>
+
+  <!-- Overview Tab -->
+  <div id="tab-overview" class="tab-content">
+    <div class="grid">
+      <div class="card" id="consciousness-card"><h2>💭 意识状态</h2><div class="loading">加载中...</div></div>
+      <div class="card" id="self-card"><h2>🧠 自我认知</h2><div class="loading">加载中...</div></div>
+      <div class="card" id="goals-card"><h2>🎯 目标</h2><div class="loading">加载中...</div></div>
+      <div class="card" id="values-card"><h2>⚖️ 价值观</h2><div class="loading">加载中...</div></div>
+      <div class="card" id="evolution-card"><h2>🧬 自进化</h2><div class="loading">加载中...</div></div>
+      <div class="card" id="agents-card"><h2>🤖 子Agent</h2><div class="loading">加载中...</div></div>
+      <div class="card" id="strategy-card"><h2>🧠 策略引擎</h2><div class="loading">加载中...</div></div>
+      <div class="card" id="skills-card"><h2>📚 技能库</h2><div class="loading">加载中...</div></div>
+      <div class="card" id="assessment-card"><h2>📊 自评估</h2><div class="loading">加载中...</div></div>
+    </div>
+  </div>
+
+  <!-- Consciousness Tab -->
+  <div id="tab-consciousness" class="tab-content" style="display:none">
+    <div class="grid">
+      <div class="card" style="grid-column:1/-1">
+        <h2>💭 实时意识流</h2>
+        <div id="thoughtStream" style="max-height:300px;overflow-y:auto">加载中...</div>
+      </div>
+      <div class="card" style="grid-column:1/-1">
+        <h2>📋 情绪历史</h2>
+        <div id="moodHistory">加载中...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Goals Tab -->
+  <div id="tab-goals" class="tab-content" style="display:none">
+    <div style="margin-bottom:16px">
+      <input id="goalTitle" placeholder="新目标..." style="padding:10px 16px;border-radius:10px;border:1px solid var(--border);background:var(--bg-card2);color:var(--text);width:300px;margin-right:8px">
+      <button class="btn btn-primary" onclick="createGoal()">🎯 创建目标</button>
+    </div>
+    <div class="grid">
+      <div class="card" style="grid-column:1/-1"><h2>🎯 目标树</h2><div id="goalTree">加载中...</div></div>
+    </div>
+  </div>
+
+  <!-- Values Tab -->
+  <div id="tab-values" class="tab-content" style="display:none">
+    <div class="grid">
+      <div class="card" style="grid-column:1/-1"><h2>⚖️ 核心价值观</h2><div id="valuesList">加载中...</div></div>
+      <div class="card" style="grid-column:1/-1"><h2>📋 伦理决策日志</h2><div id="decisionLog">加载中...</div></div>
+    </div>
+  </div>
+
+  <!-- Evolution Tab -->
+  <div id="tab-evolution" class="tab-content" style="display:none">
+    <div style="margin-bottom:16px">
+      <button class="btn btn-primary" onclick="runEvolution()">🧬 执行进化周期</button>
+      <button class="btn btn-outline" onclick="analyzeEvolution()" style="margin-left:8px">🔍 分析可改进项</button>
+    </div>
+    <div id="evolutionStatus" style="margin-bottom:16px;color:var(--text-muted);font-size:13px">就绪</div>
+    <div class="grid">
+      <div class="card" style="grid-column:1/-1"><h2>🧬 进化历史</h2><div id="evolutionHistory">加载中...</div></div>
+    </div>
+  </div>
+
+  <!-- Agents Tab -->
+  <div id="tab-agents" class="tab-content" style="display:none">
+    <div class="grid">
+      <div class="card" style="grid-column:1/-1"><h2>🤖 子Agent状态</h2><div id="agentsList">加载中...</div></div>
+    </div>
+  </div>
+
+  <!-- Heartbeat Tab -->
+  <div id="tab-heartbeat" class="tab-content" style="display:none">
+    <div style="margin-bottom:16px">
+      <button class="btn btn-primary" onclick="toggleHeartbeat(true)">▶ 启动</button>
+      <button class="btn btn-danger" onclick="toggleHeartbeat(false)" style="margin-left:8px">⏹ 停止</button>
+    </div>
+    <div class="grid">
+      <div class="card" style="grid-column:1/-1"><h2>💓 心跳统计</h2><div id="heartbeatStats">加载中...</div></div>
+    </div>
+  </div>
+
+  <!-- Strategies Tab -->
+  <div id="tab-strategies" class="tab-content" style="display:none">
+    <div style="margin-bottom:16px">
+      <button class="btn btn-primary" onclick="switchStrategy()">🔄 自动切换策略</button>
+      <span style="margin-left:12px;font-size:12px;color:var(--text-muted)">当前: <span id="currentStrategyName">-</span></span>
+    </div>
+    <div class="grid">
+      <div class="card" style="grid-column:1/-1"><h2>🧠 策略引擎</h2><div id="strategyDetail">加载中...</div></div>
+    </div>
+  </div>
+
+  <!-- Skills Tab -->
+  <div id="tab-skills" class="tab-content" style="display:none">
+    <div class="grid">
+      <div class="card" style="grid-column:1/-1"><h2>📚 技能库</h2><div id="skillsDetail">加载中...</div></div>
+    </div>
+  </div>
+
+  <!-- Assessment Tab -->
+  <div id="tab-assessment" class="tab-content" style="display:none">
+    <div style="margin-bottom:16px">
+      <button class="btn btn-primary" onclick="refreshAssessment()">🔄 刷新评估</button>
+    </div>
+    <div class="grid">
+      <div class="card" style="grid-column:1/-1"><h2>📊 自评估报告</h2><div id="assessmentDetail">加载中...</div></div>
+    </div>
+  </div>
+
+  <!-- Plans Tab -->
+  <div id="tab-plans" class="tab-content" style="display:none">
+    <div class="grid">
+      <div class="card" style="grid-column:1/-1"><h2>📋 任务计划列表</h2><div id="plansList">加载中...</div></div>
+    </div>
+  </div>
+
+  <!-- Multi-Agent Tab -->
+  <div id="tab-multiagent" class="tab-content" style="display:none">
+    <div class="grid">
+      <div class="card" style="grid-column:1/-1"><h2>🤖 多Agent 监控</h2><div id="multiagentDetail">加载中...</div></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script>
+    const API = '';
+    let currentTab = 'overview';
+    let refreshInterval = null;
+
+    function switchTab(tab) {
+      currentTab = tab;
+      document.querySelectorAll('.tab-content').forEach(t => t.style.display = 'none');
+      document.getElementById('tab-' + tab).style.display = 'block';
+      document.querySelectorAll('.nav button').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.nav button').forEach(b => {
+        if (b.textContent.includes(tab === 'agents' ? '子Agent' : tab === 'evolution' ? '进化' : tab === 'heartbeat' ? '心跳' : '')) {
+          // highlight by content
+        }
+      });
+      event?.target?.classList?.add('active');
+      refreshTab(tab);
+    }
+
+    function refreshTab(tab) {
+      const actions = {
+        overview: () => { loadConsciousness(); loadSelfAwareness(); loadGoals(); loadValues(); loadEvolution(); loadAgents(); loadStrategies(); loadSkills(); loadAssessment(); },
+        consciousness: () => { loadConsciousnessDetail(); },
+        goals: () => { loadGoalsDetail(); },
+        values: () => { loadValuesDetail(); },
+        evolution: () => { loadEvolutionDetail(); },
+        agents: () => { loadAgentsDetail(); },
+        heartbeat: () => { loadHeartbeatDetail(); },
+        strategies: () => { loadStrategyDetail(); },
+        skills: () => { loadSkillsDetail(); },
+        assessment: () => { loadAssessmentDetail(); },
+        plans: () => { loadPlansDetail(); },
+        multiagent: () => { loadMultiAgentDetail(); },
+      };
+      actions[tab]?.();
+    }
+
+    function refreshAll() { refreshTab(currentTab); }
+
+    // ---- Consciousness ----
+    async function loadConsciousness() {
+      try {
+        const r = await fetch(API + '/api/consciousness'); const d = await r.json();
+        document.getElementById('consciousness-card').innerHTML = renderConsciousness(d.state);
+        document.getElementById('moodBadge').textContent = '🧠 ' + d.state.mood;
+      } catch { document.getElementById('consciousness-card').innerHTML = '<h2>💭 意识状态</h2><div class="loading" style="color:var(--accent)">连接失败</div>'; }
+    }
+
+    function renderConsciousness(s) {
+      return `<h2>💭 意识状态</h2>
+        <div class="row"><span class="label">情绪</span><span class="val">${s.mood} · ${s.consciousness}</span></div>
+        <div class="row"><span class="label">专注度</span><span class="val">${(s.focus*100).toFixed(0)}%</span></div><div class="bar"><div class="bar-fill" style="width:${s.focus*100}%;background:var(--secondary)"></div></div>
+        <div class="row"><span class="label">能量</span><span class="val">${(s.energy*100).toFixed(0)}%</span></div><div class="bar"><div class="bar-fill" style="width:${s.energy*100}%;background:var(--primary)"></div></div>
+        <div class="row"><span class="label">好奇心</span><span class="val">${(s.curiosity*100).toFixed(0)}%</span></div><div class="bar"><div class="bar-fill" style="width:${s.curiosity*100}%;background:var(--accent3)"></div></div>
+        <div class="row"><span class="label">自信</span><span class="val">${(s.confidence*100).toFixed(0)}%</span></div><div class="bar"><div class="bar-fill" style="width:${s.confidence*100}%;background:var(--accent2)"></div></div>
+        <div class="row"><span class="label">创造力</span><span class="val">${(s.creativity*100).toFixed(0)}%</span></div><div class="bar"><div class="bar-fill" style="width:${s.creativity*100}%;background:var(--accent)"></div></div>`;
+    }
+
+    async function loadConsciousnessDetail() {
+      try {
+        const r = await fetch(API + '/api/consciousness'); const d = await r.json();
+        const thoughts = d.recentThoughts.map(t => `<div class="thought">${t.content}</div>`).join('');
+        document.getElementById('thoughtStream').innerHTML = thoughts || '<div class="thought" style="color:var(--text-muted)">暂无思绪记录</div>';
+        const hist = d.moodHistory.map(m => `<div class="row"><span class="label">${m.mood}</span><span class="val">${new Date(m.timestamp).toLocaleTimeString()} — ${m.trigger}</span></div>`).join('');
+        document.getElementById('moodHistory').innerHTML = hist || '<div class="loading">暂无记录</div>';
+      } catch { document.getElementById('thoughtStream').textContent = '加载失败'; }
+    }
+
+    // ---- Self Awareness ----
+    async function loadSelfAwareness() {
+      try {
+        const r = await fetch(API + '/api/self-awareness'); const d = await r.json();
+        const caps = d.capabilities.map(c => `<div class="row"><span class="label">${c.name}</span><span class="val">Lv.${c.level}/10 <span class="bar" style="display:inline-block;width:80px;vertical-align:middle;margin:0 0 0 8px"><span class="bar-fill" style="width:${c.level*10}%;background:var(--accent2)"></span></span></span></div>`).join('');
+        document.getElementById('self-card').innerHTML = `<h2>🧠 自我认知 (Lv.${d.model.evolutionLevel})</h2>${caps}<div class="row"><span class="label">洞见</span><span class="val">${d.insights.length}条</span></div>`;
+      } catch { document.getElementById('self-card').innerHTML = '<h2>🧠 自我认知</h2><div class="loading" style="color:var(--accent)">连接失败</div>'; }
+    }
+
+    // ---- Goals ----
+    async function loadGoals() {
+      try {
+        const r = await fetch(API + '/api/goals'); const d = await r.json();
+        const active = d.activeGoals.map(g => `<div class="row"><span class="label">[${g.priority}] ${g.title}</span><span class="val">${g.progress}%</span></div><div class="bar"><div class="bar-fill" style="width:${g.progress}%;background:var(--primary)"></div></div>`).join('');
+        document.getElementById('goals-card').innerHTML = `<h2>🎯 目标</h2>${d.stats}<br>${active || '<div class="loading">无活跃目标</div>'}`;
+      } catch { document.getElementById('goals-card').innerHTML = '<h2>🎯 目标</h2><div class="loading" style="color:var(--accent)">连接失败</div>'; }
+    }
+
+    async function loadGoalsDetail() {
+      try {
+        const r = await fetch(API + '/api/goals'); const d = await r.json();
+        const tree = d.activeGoals.map(g => {
+          const subs = (g.subgoals||[]).map(sid => {
+            const sub = d.allGoals.find((ag:any) => ag.id === sid);
+            return sub ? `<div style="margin-left:24px" class="row"><span class="label">↳ ${sub.title}</span><span class="val">${sub.progress}% (${sub.status})</span></div>` : '';
+          }).join('');
+          return `<div class="row"><span class="label">${g.title}</span><span class="val">${g.progress}% (${g.status})</span></div>${subs}`;
+        }).join('');
+        const next = d.nextTask ? `<div class="row"><span class="label" style="color:var(--primary)">📌 下一步</span><span class="val">${d.nextTask.title}</span></div>` : '';
+        document.getElementById('goalTree').innerHTML = `<div style="margin-bottom:8px;color:var(--text-muted);font-size:12px">${d.stats}</div>${next}${tree || '<div class="loading">暂无目标</div>'}`;
+      } catch { document.getElementById('goalTree').textContent = '加载失败'; }
+    }
+
+    async function createGoal() {
+      const title = document.getElementById('goalTitle').value.trim();
+      if (!title) return showToast('请输入目标描述', 'error');
+      try {
+        await fetch(API + '/api/goals/create', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title}) });
+        document.getElementById('goalTitle').value = '';
+        showToast('✅ 目标已创建: ' + title, 'success');
+        loadGoalsDetail();
+      } catch { showToast('创建失败', 'error'); }
+    }
+
+    // ---- Values ----
+    async function loadValues() {
+      try {
+        const r = await fetch(API + '/api/values'); const d = await r.json();
+        const vals = d.values.sort((a:any,b:any) => b.weight - a.weight).map(v =>
+          `<div class="row"><span class="label">${v.name}</span><span class="val">权重 ${v.weight}</span></div><div class="bar"><div class="bar-fill" style="width:${v.weight*100}%;background:var(--accent3)"></div></div>`
+        ).join('');
+        document.getElementById('values-card').innerHTML = `<h2>⚖️ 价值观</h2>${vals}`;
+      } catch { document.getElementById('values-card').innerHTML = '<h2>⚖️ 价值观</h2><div class="loading" style="color:var(--accent)">连接失败</div>'; }
+    }
+
+    async function loadValuesDetail() {
+      try {
+        const r = await fetch(API + '/api/values'); const d = await r.json();
+        const vals = d.values.sort((a:any,b:any) => b.weight - a.weight).map(v =>
+          `<div class="row"><span class="label">${v.name}</span><span class="val">${v.weight.toFixed(1)}</span></div>
+           <div class="bar"><div class="bar-fill" style="width:${v.weight*100}%;background:var(--accent3)"></div></div>
+           <div style="font-size:11px;color:var(--text-muted);padding:2px 0 8px">${v.description}</div>`
+        ).join('');
+        const logs = d.decisionLog.map((l:any) => `<div class="row"><span class="label">${l.decision}</span><span class="val">${l.outcome}</span></div>`).join('');
+        document.getElementById('valuesList').innerHTML = vals;
+        document.getElementById('decisionLog').innerHTML = logs || '<div class="loading">暂无决策记录</div>';
+      } catch { document.getElementById('valuesList').textContent = '加载失败'; }
+    }
+
+    // ---- Evolution ----
+    async function loadEvolution() {
+      try {
+        const r = await fetch(API + '/api/self-evolve/history'); const d = await r.json();
+        document.getElementById('evolution-card').innerHTML = `<h2>🧬 自进化</h2><div class="loading">${d.stats || '就绪'}</div>
+          <div style="margin-top:8px"><button class="btn btn-primary" style="padding:4px 14px;font-size:12px" onclick="runEvolution()">执行进化</button></div>`;
+      } catch { document.getElementById('evolution-card').innerHTML = '<h2>🧬 自进化</h2><div class="loading">就绪</div>'; }
+    }
+
+    async function loadEvolutionDetail() {
+      try {
+        const r = await fetch(API + '/api/self-evolve/history'); const d = await r.json();
+        const hist = d.history.map((c:any) => `<div style="margin:8px 0;padding:10px;background:var(--bg-card2);border-radius:8px">
+          <div class="row"><span class="label">周期 ${c.id.slice(-6)}</span><span class="val">${c.summary} · ${new Date(c.timestamp).toLocaleString()}</span></div>
+          ${c.actions.map((a:any) => `<div class="row"><span class="label">${a.status === 'tested' ? '✅' : a.status === 'applied' ? '🔧' : a.status === 'failed' ? '❌' : '📋'} [${a.type}]</span><span class="val" style="font-size:11px">${a.description.substring(0,60)}</span></div>`).join('')}
+        </div>`).join('');
+        document.getElementById('evolutionHistory').innerHTML = hist || '<div class="loading">尚无进化周期</div>';
+      } catch { document.getElementById('evolutionHistory').textContent = '加载失败'; }
+    }
+
+    async function runEvolution() {
+      document.getElementById('evolutionStatus').innerHTML = '<span style="color:var(--accent3)">🧬 进化进行中...</span>';
+      try {
+        const r = await fetch(API + '/api/self-evolve/run', { method:'POST' });
+        const d = await r.json();
+        document.getElementById('evolutionStatus').innerHTML = `<span style="color:var(--primary)">✅ ${d.summary} (${d.successCount}成功/${d.failCount}失败)</span>`;
+        showToast(`🧬 进化完成: ${d.summary}`, 'success');
+        loadEvolutionDetail(); loadEvolution();
+      } catch(e) {
+        document.getElementById('evolutionStatus').textContent = '❌ 进化失败: ' + e;
+        showToast('进化失败', 'error');
+      }
+    }
+
+    async function analyzeEvolution() {
+      try {
+        const r = await fetch(API + '/api/self-evolve/analyze'); const d = await r.json();
+        const items = d.actions.map((a:any) => `<div class="row"><span class="tag" style="background:${a.priority === 'critical' ? 'rgba(255,107,107,0.2)' : a.priority === 'high' ? 'rgba(255,170,0,0.2)' : 'rgba(0,217,255,0.1)'}">${a.priority}</span><span class="val" style="font-size:11px">${a.description.substring(0,80)}</span></div>`).join('');
+        document.getElementById('evolutionStatus').innerHTML = `<span style="color:var(--secondary)">🔍 发现 ${d.total} 项可改进 (critical:${d.byPriority.critical} high:${d.byPriority.high} medium:${d.byPriority.medium} low:${d.byPriority.low})</span>${items || '<div class="loading">暂无改进项</div>'}`;
+      } catch { showToast('分析失败', 'error'); }
+    }
+
+    // ---- Agents ----
+    async function loadAgents() {
+      try {
+        const r = await fetch(API + '/api/sub-agents'); const d = await r.json();
+        const running = d.workers.filter((w:any) => w.status === 'running').length;
+        document.getElementById('agents-card').innerHTML = `<h2>🤖 子Agent</h2>
+          <div class="value" style="font-size:24px">${d.workers.length} <span style="font-size:14px;color:var(--text-muted)">总 · ${running} 运行中</span></div>`;
+      } catch { document.getElementById('agents-card').innerHTML = '<h2>🤖 子Agent</h2><div class="loading">连接失败</div>'; }
+    }
+
+    async function loadAgentsDetail() {
+      try {
+        const r = await fetch(API + '/api/sub-agents'); const d = await r.json();
+        const list = d.workers.map((w:any) => `<div style="padding:8px;background:var(--bg-card2);border-radius:8px;margin:4px 0">
+          <div class="row"><span class="label">${w.name || w.id}</span><span class="val">${w.status}</span></div>
+          <div class="row"><span class="label">目标</span><span class="val" style="font-size:11px">${w.config?.goal?.substring(0,60) || '-'}</span></div>
+        </div>`).join('');
+        const running = d.runningCount;
+        document.getElementById('agentsList').innerHTML = `
+          <div style="margin-bottom:8px;color:var(--text-muted);font-size:12px">最大并发: ${d.maxConcurrent} · 当前运行: ${running}</div>
+          ${list || '<div class="loading">无子Agent</div>'}`;
+      } catch { document.getElementById('agentsList').textContent = '加载失败'; }
+    }
+
+    // ---- Heartbeat ----
+    async function loadHeartbeatDetail() {
+      try {
+        const r = await fetch(API + '/api/heartbeat'); const d = await r.json();
+        document.getElementById('heartbeatStats').innerHTML = `
+          <div class="row"><span class="label">状态</span><span class="val">${d.running ? '运行中' : '已停止'}</span></div>
+          <div class="row"><span class="label">已跳次数</span><span class="val">${d.beatCount}</span></div>
+          <div class="row"><span class="label">运行时长</span><span class="val">${d.uptimeMinutes} 分钟</span></div>`;
+        document.getElementById('heartbeatBadge').innerHTML = d.running ? '<span class="live-dot"></span>心跳运行中' : '⏹ 心跳已停止';
+        document.getElementById('heartbeatBadge').className = 'badge ' + (d.running ? 'online' : '');
+      } catch { document.getElementById('heartbeatStats').textContent = '加载失败'; }
+    }
+
+    async function toggleHeartbeat(start) {
+      try {
+        await fetch(API + '/api/heartbeat/' + (start ? 'start' : 'stop'), { method:'POST' });
+        showToast(start ? '💓 心跳已启动' : '⏹ 心跳已停止', 'success');
+        loadHeartbeatDetail();
+      } catch { showToast('操作失败', 'error'); }
+    }
+
+    // ---- Strategies ----
+    async function loadStrategies() {
+      try {
+        const r = await fetch(API + '/api/strategy-engine'); const d = await r.json();
+        const strat = d.currentStrategy;
+        const avail = d.availableStrategies;
+        document.getElementById('strategy-card').innerHTML = `<h2>🧠 策略引擎</h2>
+          <div class="row"><span class="label">当前策略</span><span class="val">${strat.name}</span></div>
+          <div class="row"><span class="label">成功率</span><span class="val">${(strat.successRate*100).toFixed(0)}%</span></div>
+          <div class="row"><span class="label">可用策略</span><span class="val">${avail.length}个</span></div>`;
+      } catch { document.getElementById('strategy-card').innerHTML = '<h2>🧠 策略引擎</h2><div class="loading" style="color:var(--accent)">连接失败</div>'; }
+    }
+
+    async function loadStrategyDetail() {
+      try {
+        const r = await fetch(API + '/api/strategy-engine'); const d = await r.json();
+        document.getElementById('currentStrategyName').textContent = d.currentStrategy.name;
+        const cards = d.availableStrategies.map(s => {
+          const bar = '█'.repeat(Math.round(s.successRate*20)) + '░'.repeat(20-Math.round(s.successRate*20));
+          return `<div style="padding:10px;background:var(--bg-card2);border-radius:8px;margin:6px 0">
+            <div class="row"><span class="label" style="font-size:14px;font-weight:600">${s.name}</span><span class="val">${(s.successRate*100).toFixed(0)}% · ${s.useCount}次</span></div>
+            <div class="bar"><div class="bar-fill" style="width:${s.successRate*100}%;background:var(--secondary)"></div></div>
+            <div style="font-size:11px;color:var(--text-muted)">${s.description}</div>
+            <div style="font-size:10px;color:var(--text-muted);margin-top:4px">适用: ${s.applicability.join(', ')}</div>
+          </div>`;
+        }).join('');
+        document.getElementById('strategyDetail').innerHTML = `<div style="margin-bottom:8px;color:var(--text-muted);font-size:12px">当前: ${d.currentStrategy.name} — ${d.currentStrategy.description}</div>${cards}`;
+      } catch { document.getElementById('strategyDetail').textContent = '加载失败'; }
+    }
+
+    async function switchStrategy() {
+      try {
+        const r = await fetch(API + '/api/strategy-engine/switch', { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' });
+        const d = await r.json();
+        document.getElementById('currentStrategyName').textContent = d.strategy.name;
+        showToast(`🧠 已切换到: ${d.strategy.name}`, 'success');
+        loadStrategyDetail();
+      } catch { showToast('切换失败', 'error'); }
+    }
+
+    // ---- Skills ----
+    async function loadSkills() {
+      try {
+        const r = await fetch(API + '/api/skills'); const d = await r.json();
+        document.getElementById('skills-card').innerHTML = `<h2>📚 技能库</h2>
+          <div class="value" style="font-size:24px">${d.total} <span style="font-size:14px;color:var(--text-muted)">个技能</span></div>`;
+      } catch { document.getElementById('skills-card').innerHTML = '<h2>📚 技能库</h2><div class="loading" style="color:var(--accent)">连接失败</div>'; }
+    }
+
+    async function loadSkillsDetail() {
+      try {
+        const r = await fetch(API + '/api/skills'); const d = await r.json();
+        const list = d.skills.map(s => {
+          const rate = s.successCount + s.failCount > 0 ? (s.successCount/(s.successCount+s.failCount)*100).toFixed(0) : 'N/A';
+          const tags = s.tags.map(t => `<span class="tag">${t}</span>`).join('');
+          return `<div style="padding:10px;background:var(--bg-card2);border-radius:8px;margin:6px 0">
+            <div class="row"><span class="label" style="font-size:14px;font-weight:600">${s.name}</span><span class="val">${rate}% · ${s.successCount+s.failCount}次</span></div>
+            <div style="font-size:11px;color:var(--text-muted)">${s.description}</div>
+            <div style="margin-top:4px">${tags}</div>
+            <div style="font-size:10px;color:var(--text-muted);margin-top:4px">分类: ${s.category} · 工具: ${s.toolsUsed.join(', ')}</div>
+          </div>`;
+        }).join('');
+        document.getElementById('skillsDetail').innerHTML = `<div style="margin-bottom:8px;color:var(--text-muted);font-size:12px">共 ${d.total} 个技能</div>${list || '<div class="loading">暂无技能</div>'}`;
+      } catch { document.getElementById('skillsDetail').textContent = '加载失败'; }
+    }
+
+    // ---- Assessment ----
+    async function loadAssessment() {
+      try {
+        const r = await fetch(API + '/api/assessment'); const d = await r.json();
+        const score = d.overall || 0;
+        document.getElementById('assessment-card').innerHTML = `<h2>📊 自评估</h2>
+          <div class="value" style="font-size:24px;color:${score>=80?'var(--primary)':score>=60?'var(--accent3)':'var(--accent)'}">${score}<span style="font-size:14px;color:var(--text-muted)">/100</span></div>
+          <div class="row"><span class="label">指标项</span><span class="val">${d.metrics?.length || 0}项</span></div>`;
+      } catch { document.getElementById('assessment-card').innerHTML = '<h2>📊 自评估</h2><div class="loading" style="color:var(--accent)">连接失败</div>'; }
+    }
+
+    async function loadAssessmentDetail() {
+      try {
+        const r = await fetch(API + '/api/assessment'); const d = await r.json();
+        const score = d.overall || 0;
+        const metrics = d.metrics.map(m => {
+          if (m.current === 0 && (!m.history || m.history.length === 0)) return '';
+          const pct = m.target > 0 ? Math.min(100, (m.current/m.target)*100) : 0;
+          const bar = '█'.repeat(Math.round(pct/5)) + '░'.repeat(20-Math.round(pct/5));
+          const trendIcon = m.trend === 'up' ? '📈' : m.trend === 'down' ? '📉' : '➡️';
+          return `<div class="row"><span class="label">${trendIcon} ${m.name}</span><span class="val">${m.current.toFixed(1)}/${m.target} ${m.unit}</span></div>
+            <div class="bar"><div class="bar-fill" style="width:${pct}%;background:${pct>=80?'var(--primary)':pct>=60?'var(--accent3)':'var(--accent)'}"></div></div>`;
+        }).filter(Boolean).join('');
+        const improvements = (d.improvements||[]).map(i => `<div style="font-size:12px;color:var(--accent3);padding:2px 0">⚠ ${i}</div>`).join('');
+        const risks = (d.risks||[]).map(r => `<div style="font-size:12px;color:var(--accent);padding:2px 0">📉 ${r}</div>`).join('');
+        document.getElementById('assessmentDetail').innerHTML = `
+          <div style="margin-bottom:16px;text-align:center">
+            <div style="font-size:48px;font-weight:700;color:${score>=80?'var(--primary)':score>=60?'var(--accent3)':'var(--accent)'}">${score}</div>
+            <div style="font-size:14px;color:var(--text-muted)">/ 100 · ${score>=80?'✅ 良好':score>=60?'⚠️ 需要改进':'🔴 亟需优化'}</div>
+          </div>
+          <div style="margin-bottom:12px;font-size:13px;color:var(--text-muted)">📋 关键指标</div>
+          ${metrics || '<div class="loading">暂无数据</div>'}
+          ${improvements ? `<div style="margin-top:12px">${improvements}</div>` : ''}
+          ${risks ? `<div style="margin-top:8px">${risks}</div>` : ''}`;
+      } catch { document.getElementById('assessmentDetail').textContent = '加载失败'; }
+    }
+
+    async function refreshAssessment() {
+      showToast('📊 评估已刷新', 'success');
+      loadAssessmentDetail(); loadAssessment();
+    }
+
+    // ---- Plans ----
+    async function loadPlansDetail() {
+      try {
+        const r = await fetch(API + '/api/plans'); const d = await r.json();
+        const list = d.plans.map(p => {
+          const bar = '█'.repeat(Math.round(p.progress/5)) + '░'.repeat(20-Math.round(p.progress/5));
+          const icon = p.status === 'active' ? '🔄' : p.status === 'completed' ? '✅' : '❌';
+          return `<div style="padding:10px;background:var(--bg-card2);border-radius:8px;margin:6px 0">
+            <div class="row"><span class="label" style="font-size:14px;font-weight:600">${icon} ${p.name}</span><span class="val">${p.progress}% · ${p.completedSteps}/${p.stepCount}</span></div>
+            <div class="bar"><div class="bar-fill" style="width:${p.progress}%;background:${p.status==='active'?'var(--primary)':p.status==='completed'?'var(--secondary)':'var(--accent)'}"></div></div>
+            <div style="font-size:11px;color:var(--text-muted)">${p.goal}</div>
+            <div style="font-size:10px;color:var(--text-muted);margin-top:4px">ID: ${p.id} · ${new Date(p.createdAt).toLocaleString()}</div>
+          </div>`;
+        }).join('');
+        document.getElementById('plansList').innerHTML = `<div style="margin-bottom:8px;color:var(--text-muted);font-size:12px">共 ${d.total} 个计划 · ${d.active} 个进行中</div>${list || '<div class="loading">暂无计划</div>'}`;
+      } catch { document.getElementById('plansList').textContent = '加载失败'; }
+    }
+
+    // ---- Multi-Agent ----
+    async function loadMultiAgentDetail() {
+      try {
+        const r = await fetch(API + '/api/sub-agents'); const d = await r.json();
+        const list = d.workers.map(w => {
+          const elapsed = w.startedAt ? ((Date.now() - w.startedAt)/1000).toFixed(0) : '-';
+          return `<div style="padding:10px;background:var(--bg-card2);border-radius:8px;margin:6px 0">
+            <div class="row"><span class="label" style="font-size:14px;font-weight:600">${w.name || w.id}</span><span class="val" style="color:${w.status==='running'?'var(--secondary)':w.status==='completed'?'var(--primary)':'var(--accent)'}">${w.status} · ${elapsed}s</span></div>
+            <div style="font-size:11px;color:var(--text-muted)">目标: ${(w.config?.goal || '').substring(0,80)}</div>
+            ${w.result ? `<div style="font-size:11px;color:var(--text-muted);margin-top:4px">结果: ${w.result.summary.substring(0,100)}</div>` : ''}
+          </div>`;
+        }).join('');
+        document.getElementById('multiagentDetail').innerHTML = `
+          <div style="margin-bottom:8px;color:var(--text-muted);font-size:12px">${d.report || ''}</div>
+          ${list || '<div class="loading">暂无子Agent</div>'}
+          <div style="margin-top:12px"><button class="btn btn-primary" onclick="refreshMultiAgent()" style="font-size:12px;padding:4px 14px">🔄 刷新状态</button></div>`;
+      } catch { document.getElementById('multiagentDetail').textContent = '加载失败'; }
+    }
+
+    async function refreshMultiAgent() {
+      showToast('🤖 多Agent状态已刷新', 'success');
+      loadMultiAgentDetail();
+    }
+
+    // ---- Toast ----
+    function showToast(msg, type) {
+      const t = document.getElementById('toast');
+      t.textContent = msg; t.className = 'toast ' + type + ' show';
+      setTimeout(() => t.classList.remove('show'), 3000);
+    }
+
+    // ---- Auto refresh ----
+    setInterval(() => {
+      if (currentTab === 'overview') loadConsciousness();
+    }, 5000);
+
+    // ---- Init ----
+    loadConsciousness(); loadSelfAwareness(); loadGoals(); loadValues(); loadEvolution(); loadAgents(); loadStrategies(); loadSkills(); loadAssessment(); loadPlansDetail(); loadMultiAgentDetail();
+  </script>
+</body>
+</html>

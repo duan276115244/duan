@@ -1,0 +1,174 @@
+{
+  "name": "duan-xiansheng",
+  "version": "19.0.0",
+  "description": "Duan Agent v19 - Super AI Assistant (J.A.R.V.I.S.) - Experience learning + local reasoning + optimal path",
+  "type": "module",
+  "bin": {
+    "duan": "dist/entry.js"
+  },
+  "files": [
+    "dist/",
+    "bin/",
+    "templates/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "duan": "tsx src/entry.ts",
+    "duan:install": "npm install",
+    "duan:web": "tsx src/web-server.ts",
+    "duan:web-ui": "npx serve web",
+    "duan:full": "concurrently \"npm run duan:web\" \"npm run duan:web-ui\"",
+    "duan:desktop": "electron .",
+    "duan:start": "node dist/entry.js",
+    "duan:build": "node scripts/build.cjs",
+    "duan:package": "node scripts/build.cjs",
+    "dev": "npm run duan",
+    "dev:web-server": "npm run duan:web",
+    "dev:web": "npm run duan:web-ui",
+    "dev:full": "npm run duan:full",
+    "dev:desktop": "npm run duan:desktop",
+    "start": "npm run duan:start",
+    "build": "npm run duan:build",
+    "build:frontend": "cd frontend && npm run build",
+    "build:all": "npm run build && npm run build:frontend",
+    "pack:desktop": "electron-builder --win",
+    "typecheck": "tsc --noEmit --skipLibCheck",
+    "lint": "eslint src/ desktop/ --max-warnings 100",
+    "lint:fix": "eslint src/ desktop/ --fix",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "verify:all": "npm run typecheck && npm run lint && npm run test",
+    "clean:test-data": "node -e \"const f=require('fs');['.duan/user-profiles','.duan/generated-skills','.duan/eval-history'].forEach(d=>f.existsSync(d)&&(f.rmSync(d,{recursive:true,force:true}),console.log('cleaned '+d)))\"",
+    "postinstall": "echo Installation complete! Run npm run duan to start Duan Agent",
+    "prepublishOnly": "npm run build",
+    "build:exe": "npm run build:all && electron-builder --win"
+  },
+  "keywords": [
+    "ai",
+    "assistant",
+    "jarvis",
+    "cli",
+    "agent",
+    "autonomous"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.30.0",
+    "@larksuiteoapi/node-sdk": "^1.67.0",
+    "@wecom/aibot-node-sdk": "^1.0.7",
+    "axios": "^1.18.1",
+    "chalk": "^5.3.0",
+    "cheerio": "^1.0.0-rc.12",
+    "commander": "^12.0.0",
+    "cors": "^2.8.6",
+    "dotenv": "^16.6.1",
+    "express": "^4.18.0",
+    "ffmpeg-static": "^5.3.0",
+    "figlet": "^1.7.0",
+    "fluent-ffmpeg": "^2.1.3",
+    "glob": "^10.3.0",
+    "inquirer": "^9.2.0",
+    "marked": "^12.0.0",
+    "nodemailer": "^8.0.10",
+    "openai": "^4.0.0",
+    "ora": "^8.0.0",
+    "puppeteer": "^24.6.0",
+    "screenshot-desktop": "^1.15.4",
+    "ws": "^8.16.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/figlet": "^1.7.0",
+    "@types/inquirer": "^9.0.0",
+    "@types/node": "^20.11.0",
+    "@types/nodemailer": "^8.0.0",
+    "@types/ws": "^8.5.10",
+    "@vitest/coverage-v8": "^4.1.8",
+    "concurrently": "^8.2.0",
+    "electron": "^28.3.3",
+    "electron-builder": "^26.15.3",
+    "eslint": "^9.39.4",
+    "globals": "^15.15.0",
+    "serve": "^14.2.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.0",
+    "typescript-eslint": "^8.61.1",
+    "vitest": "^4.1.8"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "main": "desktop/main.js",
+  "build": {
+    "appId": "com.duanxiansheng.desktop",
+    "productName": "Duan Agent",
+    "directories": {
+      "output": "release",
+      "buildResources": "desktop"
+    },
+    "files": [
+      "desktop/**/*",
+      "frontend/dist/**/*",
+      "dist/**/*",
+      "src/**/*",
+      "templates/**/*",
+      "node_modules/**/*",
+      "package.json",
+      ".env",
+      "!node_modules/puppeteer/.local-chromium/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "frontend/dist",
+        "to": "frontend/dist"
+      },
+      {
+        "from": "node_modules/electron/dist/ffmpeg.dll",
+        "to": "ffmpeg.dll"
+      },
+      {
+        "from": "skills",
+        "to": "skills"
+      },
+      {
+        "from": "templates",
+        "to": "templates"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "desktop/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "desktop/icon.icns"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "desktop/icon.png"
+    },
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/puppeteer/**/*",
+      "node_modules/screenshot-desktop/**/*"
+    ]
+  }
+}

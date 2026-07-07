@@ -1,0 +1,156 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-duan-agent
+  labels:
+    app.kubernetes.io/name: duan-agent
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/version: "17.0.0"
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: duan-agent
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: duan-agent
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: duan-agent
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: web
+              containerPort: 3000
+              protocol: TCP
+            - name: api
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: NODE_ENV
+              value: {{ .Values.env.NODE_ENV | quote }}
+            - name: DEFAULT_MODEL_PROVIDER
+              value: {{ .Values.env.DEFAULT_MODEL_PROVIDER | quote }}
+            - name: DEFAULT_MODEL
+              value: {{ .Values.env.DEFAULT_MODEL | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.env.LOG_LEVEL | quote }}
+            - name: REDIS_URL
+              value: redis://{{ .Release.Name }}-redis-master:6379
+            - name: VECTOR_DB_URL
+              value: http://{{ .Release.Name }}-qdrant:6333
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-secrets
+                  key: OPENAI_API_KEY
+            - name: AZURE_SPEECH_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-secrets
+                  key: AZURE_SPEECH_KEY
+            - name: HA_BASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-secrets
+                  key: HA_BASE_URL
+            - name: HA_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-secrets
+                  key: HA_TOKEN
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          livenessProbe:
+            {{- toYaml .Values.healthcheck.liveness | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.healthcheck.readiness | nindent 12 }}
+          volumeMounts:
+            - name: duan-data
+              mountPath: {{ .Values.persistence.mountPath }}
+      volumes:
+        - name: duan-data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Release.Name }}-duan-data
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-duan-agent
+  labels:
+    app.kubernetes.io/name: duan-agent
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.webPort }}
+      targetPort: web
+      protocol: TCP
+      name: web
+    - port: {{ .Values.service.apiPort }}
+      targetPort: api
+      protocol: TCP
+      name: api
+  selector:
+    app.kubernetes.io/name: duan-agent
+    app.kubernetes.io/instance: {{ .Release.Name }}
+---
+{{- if .Values.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Release.Name }}-duan-data
+spec:
+  accessModes:
+    - {{ .Values.persistence.accessMode }}
+  storageClassName: {{ .Values.persistence.storageClass }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.size }}
+{{- end }}
+---
+{{- if .Values.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ .Release.Name }}-duan-agent
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ .Release.Name }}-duan-agent
+  minReplicas: {{ .Values.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetMemoryUtilizationPercentage }}
+{{- end }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ .Release.Name }}-secrets
+type: Opaque
+stringData:
+  OPENAI_API_KEY: {{ .Values.secrets.OPENAI_API_KEY | quote }}
+  AZURE_SPEECH_KEY: {{ .Values.secrets.AZURE_SPEECH_KEY | quote }}
+  AZURE_SPEECH_REGION: {{ .Values.secrets.AZURE_SPEECH_REGION | quote }}
+  HA_BASE_URL: {{ .Values.secrets.HA_BASE_URL | quote }}
+  HA_TOKEN: {{ .Values.secrets.HA_TOKEN | quote }}
+  MIHOME_SID: {{ .Values.secrets.MIHOME_SID | quote }}

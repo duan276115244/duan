@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022"],
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "strict": false,
+    "noImplicitAny": false,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true
+  },
+  "include": ["src"],
+  "exclude": [
+    "node_modules", "dist",
+    "src/index.ts", "src/index-enhanced.ts",
+    "src/interactive.ts", "src/jarvis.ts", "src/jarvis-enhanced.ts", "src/jarvis-simple.ts",
+    "src/duan.ts", "src/core/agent.ts",
+    "src/agents/multi-agent.ts",
+    "src/models/*.ts",
+    "src/core/__tests__/**/*.ts"
+  ]
+}

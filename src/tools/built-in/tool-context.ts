@@ -1,0 +1,51 @@
+import type { SelfEvolve } from '../../core/self-evolve.js';
+import type { SelfUpgradeSystem } from '../../core/self-upgrade-system.js';
+import type { FunctionalTestSuite } from '../../core/functional-test-suite.js';
+import type { SelfHealingEngine } from '../../core/self-heal-engine.js';
+import type { ContextCompressor } from '../../core/context-compressor.js';
+import type { SubAgentOrchestrator } from '../../core/sub-agent-orchestrator.js';
+import type { TaskPlanner } from '../../core/task-planner.js';
+import type { SkillExtractor } from '../../core/skill-extractor.js';
+import type { OmniAssistant } from '../../core/omni-assistant.js';
+import type { EvolutionMetrics } from '../../core/evolution-metrics.js';
+import type { LongTermPlanner } from '../../core/long-term-planner.js';
+import type { UnifiedToolFramework } from '../../core/unified-tool-framework.js';
+import type { SessionPersistence } from '../../core/session-persistence.js';
+import type { ModelLibrary } from '../../core/model-library.js';
+import type { SelfLearningSystem } from '../../core/self-learning-system.js';
+import type { BackgroundAgentManager } from '../../core/background-agent-manager.js';
+import type { MCPMarketplace } from '../../core/mcp-marketplace.js';
+import type { ProjectContext } from '../../core/project-context.js';
+import type { AgentTeamOrchestrator } from '../../core/agent-team-orchestrator.js';
+import type { NotificationService } from '../../core/notification-service.js';
+import type { WebhookService } from '../../core/webhook-service.js';
+import type { ToolConsolidation } from '../../core/tool-consolidation.js';
+import type { CloudDeployment } from '../../core/cloud-deployment.js';
+
+export class ToolContext {
+  selfEvolve: SelfEvolve | null = null;
+  selfUpgradeSystem: SelfUpgradeSystem | null = null;
+  functionalTestSuite: FunctionalTestSuite | null = null;
+  selfHealingEngine: SelfHealingEngine | null = null;
+  contextCompressor: ContextCompressor | null = null;
+  subAgentOrchestrator: SubAgentOrchestrator | null = null;
+  taskPlanner: TaskPlanner | null = null;
+  skillExtractor: SkillExtractor | null = null;
+  omniAssistant: OmniAssistant | null = null;
+  evolutionMetrics: EvolutionMetrics | null = null;
+  longTermPlanner: LongTermPlanner | null = null;
+  unifiedToolFramework: UnifiedToolFramework | null = null;
+  sessionPersistence: SessionPersistence | null = null;
+  modelLibrary: ModelLibrary | null = null;
+  selfLearningSystem: SelfLearningSystem | null = null;
+  backgroundAgentManager: BackgroundAgentManager | null = null;
+  mcpMarketplace: MCPMarketplace | null = null;
+  projectContext: ProjectContext | null = null;
+  agentTeamOrchestrator: AgentTeamOrchestrator | null = null;
+  notificationService: NotificationService | null = null;
+  webhookService: WebhookService | null = null;
+  toolConsolidation: ToolConsolidation | null = null;
+  cloudDeployment: CloudDeployment | null = null;
+}
+
+export const toolContext = new ToolContext();

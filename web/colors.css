@@ -1,0 +1,76 @@
+:root {
+  --dark-900: #050508;
+  --dark-800: #0a0a0f;
+  --dark-700: #12121a;
+  --dark-600: #1a1a24;
+  --dark-500: #242432;
+  --dark-400: #32324a;
+  --dark-300: #4a4a6a;
+  --dark-200: #6a6a8a;
+  --dark-100: #8a8aaa;
+  --dark-50: #a8a8c0;
+
+  --neon-blue: #00d4ff;
+  --neon-blue-light: #4de8ff;
+  --neon-blue-dark: #00a8cc;
+  --neon-purple: #a855f7;
+  --neon-purple-light: #c084fc;
+  --neon-purple-dark: #7c3aed;
+  --neon-green: #39ff14;
+  --neon-green-light: #86ff6a;
+  --neon-green-dark: #2ed00f;
+  --neon-cyan: #00ffff;
+  --neon-pink: #ff00ff;
+  --neon-orange: #ff6600;
+
+  --text-primary: #ffffff;
+  --text-secondary: #a8a8c0;
+  --text-muted: #6a6a8a;
+
+  --glass-bg: rgba(26, 26, 36, 0.7);
+  --glass-border: rgba(0, 212, 255, 0.2);
+  --glass-glow: rgba(0, 212, 255, 0.1);
+
+  --success: #39ff14;
+  --warning: #ff6600;
+  --error: #ff3366;
+  --info: #00d4ff;
+
+  --shadow-neon-blue: 0 0 20px rgba(0, 212, 255, 0.3), 0 0 40px rgba(0, 212, 255, 0.1);
+  --shadow-neon-purple: 0 0 20px rgba(168, 85, 247, 0.3), 0 0 40px rgba(168, 85, 247, 0.1);
+  --shadow-neon-green: 0 0 20px rgba(57, 255, 20, 0.3), 0 0 40px rgba(57, 255, 20, 0.1);
+
+  --gradient-primary: linear-gradient(135deg, #00d4ff 0%, #a855f7 50%, #39ff14 100%);
+  --gradient-secondary: linear-gradient(135deg, #0a0a0f 0%, #1a1a24 100%);
+  --gradient-neon: linear-gradient(90deg, #00d4ff, #a855f7, #00d4ff);
+}
+
+.theme-light {
+  --dark-900: #f8f8fc;
+  --dark-800: #ffffff;
+  --dark-700: #f0f0f8;
+  --dark-600: #e8e8f0;
+  --dark-500: #d0d0e0;
+  --dark-400: #b0b0c8;
+  --dark-300: #9090a8;
+  --dark-200: #707088;
+  --dark-100: #505068;
+  --dark-50: #303040;
+
+  --text-primary: #0a0a0f;
+  --text-secondary: #505068;
+  --text-muted: #808098;
+
+  --glass-bg: rgba(255, 255, 255, 0.8);
+  --glass-border: rgba(0, 212, 255, 0.3);
+}
+
+.theme-emerald {
+  --neon-blue: #00ff88;
+  --neon-blue-light: #4dffaa;
+  --neon-blue-dark: #00cc6a;
+  --neon-purple: #00ffcc;
+  --neon-green: #00ff88;
+  
+  --gradient-primary: linear-gradient(135deg, #00ff88 0%, #00ffcc 50%, #00d4ff 100%);
+}

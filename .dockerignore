@@ -1,0 +1,15 @@
+node_modules
+dist
+.git
+.duan
+.learnings
+.sessions
+.workspace
+*.md
+!README.md
+frontend/node_modules
+frontend/dist
+.env
+config.json
+*.log
+*.bak

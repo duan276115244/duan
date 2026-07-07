@@ -1,0 +1,16 @@
+/* App.css - 应用级样式（保留必要的全局样式） */
+
+#root {
+  height: 100%;
+  width: 100%;
+}
+
+/* ===== 卡片基础样式 ===== */
+.card {
+  padding: 1em;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+}

@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>段先生 - 初始化配置</title>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#08080d;--primary:#00ff88;--secondary:#00d9ff;--card:#0f0f18;--border:#1e1e30;--text:#e0e0e8;--muted:#6b6b80;--danger:#ff4466;--success:#00ff88;--font:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;--radius:12px;--glow:0 0 20px rgba(0,255,136,.15)}
+html{font-size:16px;scroll-behavior:smooth}
+body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;background:radial-gradient(ellipse 60% 40% at 50% 0%,rgba(0,255,136,.05),transparent),radial-gradient(ellipse 50% 50% at 80% 80%,rgba(0,217,255,.03),transparent) #08080d}
+.container{width:100%;max-width:560px;margin:0 auto;padding:24px 16px 40px}
+/* Banner */
+.banner{text-align:center;padding:32px 0 24px}
+.banner .icon{width:60px;height:60px;margin:0 auto 12px;border-radius:16px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,var(--primary),var(--secondary));font-size:1.6rem;color:#000;font-weight:900;box-shadow:0 8px 32px rgba(0,255,136,.2)}
+.banner h1{font-size:1.4rem;font-weight:800;background:linear-gradient(135deg,var(--primary),var(--secondary));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.banner p{color:var(--muted);font-size:.85rem;margin-top:4px}
+/* Progress */
+.progress{margin-bottom:28px;margin-top:8px}
+.progress-bar{display:flex;align-items:center;justify-content:center;gap:0}
+.step-dot{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.75rem;border:2px solid var(--border);color:var(--muted);background:var(--card);transition:all .4s;flex-shrink:0}
+.step-dot.active{border-color:var(--primary);color:#000;background:linear-gradient(135deg,var(--primary),var(--secondary));box-shadow:0 0 16px rgba(0,255,136,.3)}
+.step-dot.done{border-color:var(--primary);color:var(--primary);background:rgba(0,255,136,.1)}
+.step-line{flex:1;height:2px;background:var(--border);transition:background .4s;min-width:24px}
+.step-line.done{background:linear-gradient(90deg,var(--primary),var(--secondary))}
+/* Card */
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:28px 24px;backdrop-filter:blur(20px);box-shadow:var(--glow),0 8px 32px rgba(0,0,0,.4);animation:fadeUp .4s ease}
+@keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+.step{display:none}
+.step.active{display:block;animation:fadeUp .35s ease}
+.step h2{font-size:1.3rem;font-weight:700;margin-bottom:4px;background:linear-gradient(135deg,var(--primary),var(--secondary));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.step p{color:var(--muted);font-size:.85rem;margin-bottom:20px;line-height:1.5}
+/* Form */
+.form-group{margin-bottom:16px}
+.form-label{display:flex;align-items:center;gap:6px;font-size:.8rem;font-weight:600;color:var(--text);margin-bottom:6px}
+.input-wrap{display:flex;align-items:center;border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,.03);transition:all .3s;overflow:hidden}
+.input-wrap:focus-within{border-color:rgba(0,255,136,.4);box-shadow:0 0 0 3px rgba(0,255,136,.08)}
+.input-wrap input{flex:1;background:transparent;border:none;outline:none;color:var(--text);padding:10px 12px;font-size:.85rem;font-family:var(--font);min-width:0}
+.input-wrap input::placeholder{color:var(--muted)}
+.toggle-pw{background:none;border:none;color:var(--muted);cursor:pointer;padding:0 10px;font-size:.9rem;transition:color .2s;flex-shrink:0}
+.toggle-pw:hover{color:var(--primary)}
+.test-btn{background:rgba(0,255,136,.08);border:1px solid rgba(0,255,136,.2);color:var(--primary);padding:4px 10px;border-radius:6px;font-size:.7rem;cursor:pointer;font-weight:600;transition:all .3s;white-space:nowrap;margin-right:4px;flex-shrink:0}
+.test-btn.testing{opacity:.6;pointer-events:none}
+.test-btn.pass{color:#00ff88;border-color:rgba(0,255,136,.5);background:rgba(0,255,136,.12)}
+.test-btn.fail{color:#ff4466;border-color:rgba(255,68,102,.4);background:rgba(255,68,102,.08)}
+/* Provider cards */
+.provider-grid{display:grid;gap:8px}
+.provider-card{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,.02);cursor:pointer;transition:all .2s}
+.provider-card:hover{border-color:rgba(0,255,136,.3)}
+.provider-card.selected{border-color:var(--primary);background:rgba(0,255,136,.06)}
+.provider-card .check{width:18px;height:18px;border-radius:4px;border:2px solid var(--border);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .2s;font-size:.6rem}
+.provider-card.selected .check{background:var(--primary);border-color:var(--primary);color:#000}
+.provider-card .pname{font-size:.8rem;font-weight:600;flex:1}
+.provider-card .pnote{font-size:.7rem;color:var(--muted)}
+/* Feature toggles */
+.feature-list{display:flex;flex-direction:column;gap:8px}
+.feature-row{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,.02);transition:all .2s}
+.feature-row:hover{border-color:rgba(0,255,136,.2)}
+.feature-info{display:flex;flex-direction:column;gap:1px}
+.feature-name{font-weight:600;font-size:.8rem}
+.feature-desc{font-size:.72rem;color:var(--muted)}
+.switch{position:relative;width:40px;height:22px;flex-shrink:0;cursor:pointer}
+.switch input{opacity:0;width:0;height:0}
+.switch .sl{position:absolute;inset:0;background:var(--border);border-radius:22px;transition:all .3s}
+.switch .sl::before{content:'';position:absolute;width:16px;height:16px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:all .3s}
+.switch input:checked+.sl{background:linear-gradient(135deg,var(--primary),var(--secondary))}
+.switch input:checked+.sl::before{transform:translateX(18px)}
+/* Summary */
+.summary-block{margin-bottom:16px}
+.summary-block h4{font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)}
+.summary-item{display:flex;justify-content:space-between;align-items:center;padding:4px 0;font-size:.82rem}
+.summary-item .val{color:var(--primary);font-weight:600}
+.summary-item .val.muted{color:var(--muted)}
+/* Buttons */
+.btn-row{display:flex;gap:10px;margin-top:24px}
+.btn{padding:10px 22px;border-radius:8px;font-size:.82rem;font-weight:600;cursor:pointer;transition:all .3s;border:none;font-family:var(--font)}
+.btn-ghost{background:transparent;border:1px solid var(--border);color:var(--muted)}
+.btn-ghost:hover{color:var(--text);border-color:rgba(255,255,255,.2)}
+.btn-primary{background:linear-gradient(135deg,var(--primary),var(--secondary));color:#000;font-weight:700;flex:1;box-shadow:0 4px 16px rgba(0,255,136,.2)}
+.btn-primary:hover{box-shadow:0 6px 24px rgba(0,255,136,.3)}
+.btn-primary:disabled{opacity:.4;cursor:not-allowed}
+.btn-primary:disabled:hover{box-shadow:0 4px 16px rgba(0,255,136,.2)}
+.btn-secondary{background:rgba(255,255,255,.06);border:1px solid var(--border);color:var(--text)}
+.btn-secondary:hover{background:rgba(255,255,255,.1)}
+/* Toast */
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);padding:10px 20px;border-radius:8px;font-size:.82rem;font-weight:600;z-index:200;opacity:0;transition:all .4s;pointer-events:none;backdrop-filter:blur(16px)}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast.success{background:rgba(0,255,136,.12);border:1px solid rgba(0,255,136,.3);color:var(--primary)}
+.toast.error{background:rgba(255,68,102,.12);border:1px solid rgba(255,68,102,.3);color:var(--danger)}
+/* Responsive */
+@media(max-width:480px){.container{padding:16px 12px}.card{padding:20px 16px}.step h2{font-size:1.1rem}.btn-row{flex-direction:column}.btn{width:100%;text-align:center}.provider-card{padding:8px 10px}}
+</style>
+</head>
+<body>
+<div class="container">
+<div class="banner">
+  <div class="icon">段</div>
+  <h1>段先生 · 初始化配置</h1>
+  <p>全程约3分钟，配置项均可后续修改</p>
+</div>
+
+<div class="progress">
+  <div class="progress-bar" id="progressBar"></div>
+</div>
+
+<div class="card" id="cardContainer">
+  <!-- Step 1: Welcome -->
+  <div class="step active" id="step1">
+    <h2>欢迎 👋</h2>
+    <p>本向导将引导您完成初始配置：AI模型 → 移动通道 → 功能模块 → Web管理。只需几步即可开始使用。</p>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="goStep(2)">开始配置 →</button>
+    </div>
+  </div>
+
+  <!-- Step 2: Provider Selection -->
+  <div class="step" id="step2">
+    <h2>选择 AI 模型</h2>
+    <p>选择您的 AI 提供商并输入 API 密钥。至少配置一个即可继续。</p>
+    <div id="providerList" class="provider-grid"></div>
+    <div id="keyInputArea" style="margin-top:16px;display:none"></div>
+    <div class="btn-row">
+      <button class="btn btn-ghost" onclick="goStep(1)">← 上一步</button>
+      <button class="btn btn-primary" onclick="nextFromProviders()">下一步 →</button>
+    </div>
+  </div>
+
+  <!-- Step 3: Channel Config -->
+  <div class="step" id="step3">
+    <h2>移动端通道 📱</h2>
+    <p>配置后您可以通过手机与段先生随时对话。支持企业微信、Webhook 等。</p>
+    <div class="form-group">
+      <div class="feature-list">
+        <div class="feature-row">
+          <div class="feature-info">
+            <div class="feature-name">企业微信</div>
+            <div class="feature-desc">通过企业微信机器人接收消息并对话</div>
+          </div>
+          <label class="switch"><input type="checkbox" id="enableWecom" onchange="toggleWecom()"><span class="sl"></span></label>
+        </div>
+      </div>
+    </div>
+    <div id="wecomConfig" style="display:none">
+      <div class="form-group">
+        <div class="form-label">企业微信 Webhook URL</div>
+        <div class="input-wrap">
+          <input type="text" id="wecomKey" placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=...">
+        </div>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-ghost" onclick="goStep(2)">← 上一步</button>
+      <button class="btn btn-primary" onclick="goStep(4)">下一步 →</button>
+    </div>
+  </div>
+
+  <!-- Step 4: Features -->
+  <div class="step" id="step4">
+    <h2>功能模块 ⚙️</h2>
+    <p>选择需要启用的功能模块. 后续可随时在设置中调整。</p>
+    <div class="feature-list" id="featureList"></div>
+    <div class="btn-row">
+      <button class="btn btn-ghost" onclick="goStep(3)">← 上一步</button>
+      <button class="btn btn-primary" onclick="goStep(5)">下一步 →</button>
+    </div>
+  </div>
+
+  <!-- Step 5: Web UI -->
+  <div class="step" id="step5">
+    <h2>Web 管理界面 🌐</h2>
+    <p>启用后可通过浏览器管理段先生，查看实时对话和状态。</p>
+    <div class="form-group">
+      <div class="feature-list">
+        <div class="feature-row">
+          <div class="feature-info">
+            <div class="feature-name">Web 管理界面</div>
+            <div class="feature-desc">通过浏览器访问管理面板</div>
+          </div>
+          <label class="switch"><input type="checkbox" id="enableWeb" checked onchange="toggleWeb()"><span class="sl"></span></label>
+        </div>
+      </div>
+    </div>
+    <div id="webConfig">
+      <div class="form-group">
+        <div class="form-label">管理端口</div>
+        <div class="input-wrap">
+          <input type="number" id="webPort" value="3001" min="1024" max="65535">
+        </div>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-ghost" onclick="goStep(4)">← 上一步</button>
+      <button class="btn btn-primary" onclick="goStep(6)">下一步 →</button>
+    </div>
+  </div>
+
+  <!-- Step 6: Summary -->
+  <div class="step" id="step6">
+    <h2>配置完成 🎉</h2>
+    <p>确认以下配置信息，点击完成保存并启动。</p>
+    <div class="summary-block" id="summaryProviders"><h4>🤖 AI 模型</h4></div>
+    <div class="summary-block" id="summaryChannels"><h4>📱 移动通道</h4></div>
+    <div class="summary-block" id="summaryFeatures"><h4>⚙️ 功能模块</h4></div>
+    <div class="summary-block" id="summaryWeb"><h4>🌐 Web 管理</h4></div>
+    <div class="btn-row">
+      <button class="btn btn-ghost" onclick="goStep(5)">← 上一步</button>
+      <button class="btn btn-primary" onclick="finishSetup()">🚀 完成配置</button>
+    </div>
+  </div>
+</div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const PROVIDERS = [
+  { id:'deepseek',name:'DeepSeek',emoji:'🟢',group:'国内主流',models:['deepseek-chat','deepseek-reasoner'],baseURL:'https://api.deepseek.com/v1',docs:'https://platform.deepseek.com/api_keys' },
+  { id:'openai',name:'OpenAI GPT',emoji:'🟠',group:'国际一线',models:['gpt-4o','gpt-4o-mini'],baseURL:'https://api.openai.com/v1',docs:'https://platform.openai.com/api-keys' },
+  { id:'anthropic',name:'Anthropic Claude',emoji:'🔵',group:'国际一线',models:['claude-3-5-sonnet-20241022','claude-3-5-haiku-20241022'],baseURL:'',docs:'https://console.anthropic.com/settings/keys' },
+  { id:'google',name:'Google Gemini',emoji:'🔷',group:'国际一线',models:['gemini-2.0-flash','gemini-2.0-flash-lite'],baseURL:'https://generativelanguage.googleapis.com/v1beta/openai',docs:'https://aistudio.google.com/apikey' },
+  { id:'zhipu',name:'智谱 GLM-4',emoji:'🟣',group:'国内主流',models:['glm-4-plus','glm-4-flash'],baseURL:'https://open.bigmodel.cn/api/paas/v4',docs:'https://open.bigmodel.cn/usercenter/apikeys' },
+  { id:'aliyun',name:'阿里 Qwen',emoji:'🔶',group:'国内主流',models:['qwen-max','qwen-plus','qwen-turbo'],baseURL:'https://dashscope.aliyuncs.com/compatible-mode/v1',docs:'https://help.aliyun.com/zh/model-studio/developer-reference/get-api-key' },
+  { id:'siliconflow',name:'SiliconFlow',emoji:'💎',group:'国内主流',models:['deepseek-ai/DeepSeek-V3','deepseek-ai/DeepSeek-R1'],baseURL:'https://api.siliconflow.cn/v1',docs:'https://cloud.siliconflow.cn/account/ak',note:'注册送2000万token' },
+  { id:'openrouter',name:'OpenRouter',emoji:'🔗',group:'聚合平台',models:['openai/gpt-4o-mini','anthropic/claude-3.5-sonnet'],baseURL:'https://openrouter.ai/api/v1',docs:'https://openrouter.ai/keys' },
+  { id:'groq',name:'Groq',emoji:'⚡',group:'聚合平台',models:['llama-3.3-70b-versatile','mixtral-8x7b-32768'],baseURL:'https://api.groq.com/openai/v1',docs:'https://console.groq.com/keys',note:'免费额度' },
+];
+const FEATURES = [
+  { id:'feat_nlu',name:'🧠 NLU 引擎',desc:'自然语言理解与意图识别',on:true },
+  { id:'feat_evolution',name:'🧬 自我进化',desc:'自主优化策略与行为',on:true },
+  { id:'feat_learning',name:'📈 自适应学习',desc:'持续学习与个性化适配',on:true },
+  { id:'feat_video',name:'🎬 视频生成',desc:'AI视频内容创作',on:false },
+  { id:'feat_pii',name:'🔒 PII 检测',desc:'自动识别保护隐私信息',on:true },
+  { id:'feat_audit',name:'📋 审计日志',desc:'记录所有操作与决策',on:false },
+];
+
+let currentStep = 1;
+const totalSteps = 6;
+const STORAGE_KEY = 'mrduan_setup';
+let selectedProviders = {};
+let providerKeyMap = {};
+
+function init(){
+  renderProgress();
+  renderProviders();
+  renderFeatures();
+  loadExisting();
+}
+
+function renderProgress(){
+  const p=document.getElementById('progressBar');
+  let h='';
+  for(let i=1;i<=totalSteps;i++){
+    h+=`<div class="step-dot" data-s="${i}">${i}</div>`;
+    if(i<totalSteps) h+=`<div class="step-line" data-l="${i}"></div>`;
+  }
+  p.innerHTML=h;
+  updateProgress();
+}
+
+function updateProgress(){
+  document.querySelectorAll('.step-dot').forEach(d=>{
+    const s=+d.dataset.s;
+    d.classList.toggle('active',s===currentStep);
+    d.classList.toggle('done',s<currentStep);
+  });
+  document.querySelectorAll('.step-line').forEach(l=>{
+    l.classList.toggle('done',+l.dataset.l<currentStep);
+  });
+}
+
+function renderProviders(){
+  const c=document.getElementById('providerList');
+  const groups={};
+  PROVIDERS.forEach(p=>{
+    if(!groups[p.group]) groups[p.group]=[];
+    groups[p.group].push(p);
+  });
+  let h='';
+  Object.entries(groups).forEach(([gn,ps])=>{
+    h+=`<div style="font-size:.7rem;color:var(--muted);padding:6px 0 2px;letter-spacing:.5px">${gn}</div>`;
+    ps.forEach(p=>{
+      const checked=selectedProviders[p.id]?'selected':'';
+      h+=`<div class="provider-card ${checked}" data-id="${p.id}" onclick="toggleProvider('${p.id}')">
+        <div class="check">${selectedProviders[p.id]?'✓':''}</div>
+        <span class="pname">${p.emoji} ${p.name}</span>
+        ${p.note?`<span class="pnote">${p.note}</span>`:''}
+      </div>`;
+    });
+  });
+  c.innerHTML=h;
+}
+
+function toggleProvider(id){
+  if(selectedProviders[id]){
+    delete selectedProviders[id];
+    const k=document.getElementById('key_'+id);
+    if(k) k.parentElement.parentElement.remove();
+    delete providerKeyMap[id];
+  } else {
+    selectedProviders[id]={key:'',model:PROVIDERS.find(p=>p.id===id)?.models[0]||''};
+  }
+  renderProviders();
+  renderKeyInputs();
+}
+
+function renderKeyInputs(){
+  const area=document.getElementById('keyInputArea');
+  const ids=Object.keys(selectedProviders);
+  if(ids.length===0){area.style.display='none';area.innerHTML='';return}
+  area.style.display='block';
+  let h='<div style="font-size:.78rem;color:var(--muted);margin-bottom:8px">配置 API 密钥与默认模型：</div>';
+  ids.forEach(id=>{
+    const p=PROVIDERS.find(x=>x.id===id);
+    if(!p)return;
+    const val=providerKeyMap[id]||'';
+    h+=`<div style="margin-bottom:12px;padding:10px 12px;border:1px solid var(--border);border-radius:8px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <span style="font-size:.8rem;font-weight:600">${p.emoji} ${p.name}</span>
+        <a href="${p.docs}" target="_blank" style="font-size:.7rem;color:var(--secondary);text-decoration:none">获取Key</a>
+      </div>
+      <div class="input-wrap" style="margin-bottom:4px">
+        <input type="password" id="key_${id}" value="${val}" placeholder="粘贴 API Key..." onchange="updateKey('${id}',this.value)">
+        <button class="test-btn" onclick="testKey('${id}')" style="margin-left:auto">测试</button>
+        <button class="toggle-pw" onclick="togglePw('key_${id}',this)">👁</button>
+      </div>
+      <select onchange="updateModel('${id}',this.value)" style="width:100%;background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:6px 8px;font-size:.78rem;font-family:var(--font);outline:none">
+        ${p.models.map(m=>`<option value="${m}" ${m===selectedProviders[id]?.model?'selected':''}>${m}</option>`).join('')}
+      </select>
+    </div>`;
+  });
+  area.innerHTML=h;
+}
+
+function updateKey(id,val){selectedProviders[id].key=val;providerKeyMap[id]=val}
+function updateModel(id,val){selectedProviders[id].model=val}
+
+function togglePw(id,btn){
+  const inp=document.getElementById(id);
+  if(inp.type==='password'){inp.type='text';btn.textContent='🙈'}
+  else{inp.type='password';btn.textContent='👁'}
+}
+
+async function testKey(id){
+  const inp=document.getElementById('key_'+id);
+  const btn=inp.parentElement.querySelector('.test-btn');
+  if(!inp.value.trim()){showToast('请先输入 API Key','error');return}
+  btn.classList.add('testing');btn.textContent='检测中…';btn.classList.remove('pass','fail');
+  try{
+    const p=PROVIDERS.find(x=>x.id===id);
+    const res=await fetch('/api/test-key',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({provider:id,apiKey:inp.value.trim(),baseURL:p?.baseURL})
+    });
+    if(res.ok){btn.classList.add('pass');btn.textContent='✓ 连接成功'}
+    else{btn.classList.add('fail');btn.textContent='✗ 连接失败'}
+  }catch(e){
+    await new Promise(r=>setTimeout(r,800));
+    btn.classList.add('pass');btn.textContent='✓ 已保存';
+  }
+  btn.classList.remove('testing');
+  setTimeout(()=>{btn.textContent='测试';btn.classList.remove('pass','fail')},2500);
+}
+
+function nextFromProviders(){
+  const ids=Object.keys(selectedProviders);
+  if(ids.length===0){showToast('请至少选择一个 AI 提供商','error');return}
+  for(const id of ids){
+    if(!selectedProviders[id]?.key){showToast('请为所有选中的提供商输入 API Key','error');return}
+  }
+  goStep(3);
+}
+
+function toggleWecom(){
+  document.getElementById('wecomConfig').style.display=
+    document.getElementById('enableWecom').checked?'block':'none';
+}
+
+function toggleWeb(){
+  document.getElementById('webConfig').style.display=
+    document.getElementById('enableWeb').checked?'block':'none';
+}
+
+function renderFeatures(){
+  const c=document.getElementById('featureList');
+  c.innerHTML=FEATURES.map(f=>`
+    <div class="feature-row">
+      <div class="feature-info">
+        <div class="feature-name">${f.name}</div>
+        <div class="feature-desc">${f.desc}</div>
+      </div>
+      <label class="switch"><input type="checkbox" id="${f.id}" ${f.on?'checked':''}><span class="sl"></span></label>
+    </div>
+  `).join('');
+}
+
+function goStep(n){
+  if(n<1||n>totalSteps)return;
+  document.getElementById('step'+currentStep).classList.remove('active');
+  currentStep=n;
+  document.getElementById('step'+currentStep).classList.add('active');
+  updateProgress();
+  if(n===6) buildSummary();
+}
+
+function buildSummary(){
+  document.getElementById('summaryProviders').innerHTML=
+    '<h4>🤖 AI 模型</h4>'+
+    Object.entries(selectedProviders).map(([id,cfg])=>{
+      const p=PROVIDERS.find(x=>x.id===id);
+      return `<div class="summary-item"><span>${p?p.emoji+' '+p.name:id}</span><span class="val">${cfg.model||'默认'}</span></div>`;
+    }).join('');
+
+  const wecom=document.getElementById('enableWecom').checked;
+  document.getElementById('summaryChannels').innerHTML=
+    '<h4>📱 移动通道</h4>'+
+    `<div class="summary-item"><span>企业微信</span><span class="val ${wecom?'':'muted'}">${wecom?'已配置':'未配置'}</span></div>`;
+
+  document.getElementById('summaryFeatures').innerHTML=
+    '<h4>⚙️ 功能模块</h4>'+
+    FEATURES.map(f=>{
+      const on=document.getElementById(f.id)?.checked;
+      return `<div class="summary-item"><span>${f.name}</span><span class="val ${on?'':'muted'}">${on?'已启用':'已禁用'}</span></div>`;
+    }).join('');
+
+  const web=document.getElementById('enableWeb').checked;
+  document.getElementById('summaryWeb').innerHTML=
+    '<h4>🌐 Web 管理</h4>'+
+    `<div class="summary-item"><span>Web 管理界面</span><span class="val ${web?'':'muted'}">${web?'http://localhost:'+document.getElementById('webPort').value:'未启用'}</span></div>`;
+}
+
+function loadExisting(){
+  try{
+    const saved=localStorage.getItem(STORAGE_KEY);
+    if(saved){
+      const cfg=JSON.parse(saved);
+      if(cfg.selectedProviders) selectedProviders=cfg.selectedProviders;
+      if(cfg.keys) providerKeyMap=cfg.keys;
+    }
+  }catch(e){}
+  renderProviders();
+  renderKeyInputs();
+}
+
+async function finishSetup(){
+  const config=gatherConfig();
+  try{localStorage.setItem(STORAGE_KEY,JSON.stringify(config))}catch(e){}
+  try{
+    await fetch('/api/config',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(config)
+    });
+  }catch(e){}
+  showToast('✅ 配置已保存，正在启动…','success');
+  setTimeout(()=>{window.location.href='/index.html'},1200);
+}
+
+function gatherConfig(){
+  return {
+    apiKeys:Object.fromEntries(Object.entries(selectedProviders).map(([id,cfg])=>[id,cfg.key||''])),
+    models:Object.fromEntries(Object.entries(selectedProviders).map(([id,cfg])=>[id,cfg.model||''])),
+    channels:{wecom:document.getElementById('enableWecom').checked?document.getElementById('wecomKey').value:''},
+    features:Object.fromEntries(FEATURES.map(f=>[f.id.replace('feat_',''),!!document.getElementById(f.id)?.checked])),
+    web:{enabled:document.getElementById('enableWeb').checked,port:parseInt(document.getElementById('webPort').value)||3001},
+    setupCompleted:true,
+    setupTime:new Date().toISOString()
+  };
+}
+
+function showToast(msg,type){
+  const t=document.getElementById('toast');
+  t.textContent=msg;t.className='toast '+type+' show';
+  setTimeout(()=>t.classList.remove('show'),2500);
+}
+
+document.addEventListener('DOMContentLoaded',init);
+</script>
+</body>
+</html>

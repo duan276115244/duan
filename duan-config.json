@@ -1,0 +1,53 @@
+{
+  "version": "2.0",
+  "profiles": {
+    "agnes": {
+      "provider": "agnes",
+      "apiKey": "enc:b15aec4b73f93afedc6375c683d69007:123b1d6e2c219d6671b6d6ba2550dd45:a7f61350f350393bf394191e861cde4473226b2a5d46023e9392d5ed05b8e9b643f8e75ae45cf987ac6c2b92cf0bf39afca63e",
+      "model": "agnes-2.0-flash",
+      "baseUrl": "https://apihub.agnes-ai.com/v1",
+      "label": "Agnes"
+    },
+    "profile-1782146575702": {
+      "provider": "doubao-coding",
+      "apiKey": "enc:76f9bd3590c432f5685e14bcfdfb1b26:c6029491a7b5d1892fac8147b70bccaa:b35e9417700f7cb439aa0e59663337776cbb932edf24c8bbd82b966b62b50095cfbc59d8b9d385b6d29deaa40ecc",
+      "model": "ark-code-latest",
+      "baseUrl": "https://ark.cn-beijing.volces.com/api/coding/v3",
+      "label": "火山引擎 Coding Plan"
+    },
+    "doubao-coding": {
+      "provider": "doubao-coding",
+      "apiKey": "enc:7f71cc9cb8479ffacebde74b8a7cf92b:8011b7c03f762d78731db37fc1fbe805:e0bb36f6e5bc4a63f2ad469b5668ea7a59c63ad42f3357351600e624e2bee881c1b06a1be038812111aff44e5ffc",
+      "model": "ark-code-latest",
+      "baseUrl": "https://ark.cn-beijing.volces.com/api/coding/v3",
+      "label": "Doubao-coding"
+    },
+    "coding_plan": {
+      "provider": "coding_plan",
+      "apiKey": "enc:dc034bb4a221adaa7733e7a9b18a30d1:eef87aad3c4e31f67c014b845a065ba8:b52fcacab8c469250c8c8c897685bcbe2408873ee0ecb8eb36859f5ce5b11b91c75e085c278ac1eebf344a24cbcd",
+      "model": "ark-code-latest",
+      "baseUrl": "https://ark.cn-beijing.volces.com/api/coding/v3",
+      "label": "Coding_plan"
+    }
+  },
+  "activeProfile": "agnes",
+  "preferences": {
+    "theme": "dark",
+    "language": "zh-CN",
+    "autoApprove": [
+      "safe",
+      "moderate"
+    ]
+  },
+  "sync": {
+    "lastModified": 1782227621357,
+    "deviceId": "43ca73e19cb7ca77"
+  },
+  "mobileChannels": [],
+  "webPort": "3001",
+  "workspace": "C:\\Users\\Administrator\\.duan\\workspace",
+  "configured": true,
+  "lastRun": 1782227621357,
+  "defaultModel": "agnes-2.0-flash",
+  "defaultProvider": "agnes"
+}

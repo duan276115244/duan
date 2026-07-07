@@ -1,0 +1,120 @@
+/* ========== 基础重置 ========== */
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --primary:#ff4757;
+  --primary-dark:#e8384f;
+  --secondary:#2f3542;
+  --accent:#ffa502;
+  --bg:#f7f8fa;
+  --text:#2f3542;
+  --text-light:#747d8c;
+  --border:#eef0f3;
+  --shadow:0 4px 20px rgba(0,0,0,.06);
+  --shadow-hover:0 8px 30px rgba(255,71,87,.18);
+  --radius:12px;
+  --transition:all .3s cubic-bezier(.4,0,.2,1);
+}
+html{scroll-behavior:smooth}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;color:var(--text);background:var(--bg);line-height:1.6;-webkit-font-smoothing:antialiased}
+a{text-decoration:none;color:inherit}
+img{display:block;max-width:100%}
+button{cursor:pointer;border:none;background:none;font-family:inherit}
+ul{list-style:none}
+.container{max-width:1280px;margin:0 auto;padding:0 20px}
+
+/* ========== 顶部小条 ========== */
+.topbar{background:#222;color:#bbb;font-size:12px;padding:6px 0}
+.topbar .container{display:flex;justify-content:space-between}
+.topbar a:hover{color:#fff}
+.topbar .links a{margin-left:18px}
+
+/* ========== 导航 ========== */
+.header{background:#fff;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.04)}
+.nav{display:flex;align-items:center;gap:30px;padding:16px 0}
+.logo{display:flex;align-items:center;gap:8px;font-size:24px;font-weight:800;color:var(--primary);white-space:nowrap}
+.logo-icon{width:36px;height:36px;background:linear-gradient(135deg,var(--primary),var(--accent));border-radius:10px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:20px}
+.menu{display:flex;gap:26px}
+.menu a{font-size:15px;font-weight:500;position:relative;padding:6px 0;transition:var(--transition)}
+.menu a:hover{color:var(--primary)}
+.menu a::after{content:'';position:absolute;left:0;bottom:0;width:0;height:2px;background:var(--primary);transition:var(--transition)}
+.menu a:hover::after{width:100%}
+.search{flex:1;max-width:480px;position:relative}
+.search input{width:100%;padding:12px 50px 12px 18px;border:2px solid var(--border);border-radius:30px;font-size:14px;outline:none;transition:var(--transition);background:var(--bg)}
+.search input:focus{border-color:var(--primary);background:#fff;box-shadow:0 0 0 4px rgba(255,71,87,.1)}
+.search button{position:absolute;right:4px;top:4px;bottom:4px;width:42px;background:var(--primary);border-radius:50%;color:#fff;display:flex;align-items:center;justify-content:center;transition:var(--transition)}
+.search button:hover{background:var(--primary-dark);transform:scale(1.05)}
+.actions{display:flex;align-items:center;gap:18px}
+.actions a{display:flex;align-items:center;gap:6px;font-size:14px;transition:var(--transition);position:relative;padding:6px}
+.actions a:hover{color:var(--primary)}
+.cart-badge{position:absolute;top:-2px;right:-8px;background:var(--primary);color:#fff;font-size:11px;font-weight:700;padding:2px 6px;border-radius:10px;min-width:18px;text-align:center;line-height:1.2}
+.menu-toggle{display:none;font-size:24px;cursor:pointer}
+
+/* ========== 轮播 Banner ========== */
+.banner{margin-top:24px}
+.carousel{position:relative;border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);height:420px}
+.slides{display:flex;height:100%;transition:transform .6s cubic-bezier(.4,0,.2,1)}
+.slide{min-width:100%;height:100%;position:relative;display:flex;align-items:center;padding:0 60px;color:#fff;overflow:hidden}
+.slide::before{content:'';position:absolute;inset:0;background:rgba(0,0,0,.15)}
+.slide-content{position:relative;z-index:2;max-width:50%}
+.slide h2{font-size:42px;font-weight:800;margin-bottom:12px;line-height:1.2;text-shadow:0 2px 10px rgba(0,0,0,.2)}
+.slide p{font-size:18px;margin-bottom:24px;opacity:.95}
+.slide .btn{display:inline-block;padding:12px 32px;background:#fff;color:var(--primary);border-radius:30px;font-weight:700;transition:var(--transition)}
+.slide .btn:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(0,0,0,.2)}
+.slide-1{background:linear-gradient(135deg,#ff6b6b,#ee5a6f)}
+.slide-2{background:linear-gradient(135deg,#4facfe,#00f2fe)}
+.slide-3{background:linear-gradient(135deg,#a18cd1,#fbc2eb)}
+.slide-4{background:linear-gradient(135deg,#fa709a,#fee140)}
+.carousel-btn{position:absolute;top:50%;transform:translateY(-50%);width:44px;height:44px;background:rgba(255,255,255,.3);backdrop-filter:blur(10px);border-radius:50%;color:#fff;font-size:24px;display:flex;align-items:center;justify-content:center;transition:var(--transition);z-index:3}
+.carousel-btn:hover{background:rgba(255,255,255,.6);color:var(--primary)}
+.prev{left:20px}.next{right:20px}
+.dots{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);display:flex;gap:8px;z-index:3}
+.dot{width:10px;height:10px;border-radius:50%;background:rgba(255,255,255,.5);cursor:pointer;transition:var(--transition)}
+.dot.active{background:#fff;width:28px;border-radius:5px}
+
+/* ========== 通用区块 ========== */
+.section{margin-top:50px}
+.section-header{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:24px}
+.section-title{font-size:26px;font-weight:800;position:relative;padding-left:16px}
+.section-title::before{content:'';position:absolute;left:0;top:6px;bottom:6px;width:4px;background:var(--primary);border-radius:2px}
+.section-subtitle{color:var(--text-light);font-size:14px;margin-top:4px;padding-left:16px}
+.more-link{color:var(--text-light);font-size:14px;transition:var(--transition)}
+.more-link:hover{color:var(--primary)}
+
+/* ========== 分类导航 ========== */
+.categories{display:grid;grid-template-columns:repeat(8,1fr);gap:16px;background:#fff;padding:24px;border-radius:var(--radius);box-shadow:var(--shadow)}
+.cat-item{display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px 8px;border-radius:var(--radius);cursor:pointer;transition:var(--transition)}
+.cat-item:hover{background:var(--bg);transform:translateY(-4px)}
+.cat-icon{width:54px;height:54px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:26px;background:linear-gradient(135deg,#ffe5e8,#ffecd1);transition:var(--transition)}
+.cat-item:hover .cat-icon{transform:scale(1.1) rotate(8deg)}
+.cat-name{font-size:13px;font-weight:500}
+
+/* ========== 限时秒杀 ========== */
+.flash-sale{background:linear-gradient(135deg,#fff5f5,#ffe8e8);border-radius:var(--radius);padding:24px;box-shadow:var(--shadow)}
+.flash-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:16px}
+.flash-title{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.flash-title h2{font-size:24px;font-weight:800;color:var(--primary)}
+.flash-title .icon{font-size:28px;animation:flash 1.5s infinite}
+@keyframes flash{0%,100%{transform:scale(1)}50%{transform:scale(1.15)}}
+.countdown{display:flex;align-items:center;gap:6px;font-size:14px;color:var(--text-light)}
+.time-block{background:var(--secondary);color:#fff;padding:6px 10px;border-radius:6px;font-weight:700;font-size:14px;min-width:32px;text-align:center;font-variant-numeric:tabular-nums}
+.time-sep{color:var(--secondary);font-weight:700}
+.flash-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:16px}
+
+/* ========== 商品卡片 ========== */
+.product{background:#fff;border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);transition:var(--transition);cursor:pointer;position:relative}
+.product:hover{transform:translateY(-6px);box-shadow:var(--shadow-hover)}
+.product-img{position:relative;aspect-ratio:1;overflow:hidden;background:#f0f0f0}
+.product-img img{width:100%;height:100%;object-fit:cover;transition:transform .5s}
+.product:hover .product-img img{transform:scale(1.08)}
+.product-tag{position:absolute;top:10px;left:10px;background:var(--primary);color:#fff;font-size:11px;font-weight:700;padding:3px 8px;border-radius:4px;z-index:2}
+.product-tag.new{background:var(--accent)}
+.product-tag.hot{background:linear-gradient(135deg,#ff4757,#ff6348)}
+.quick-btn{position:absolute;bottom:-40px;left:0;right:0;padding:10px;background:var(--primary);color:#fff;font-size:13px;font-weight:600;text-align:center;transition:bottom .3s}
+.product:hover .quick-btn{bottom:0}
+.product-info{padding:14px}
+.product-name{font-size:14px;font-weight:500;line-height:1.4;height:2.8em;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;margin-bottom:8px}
+.product-price{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.price-now{color:var(--primary);font-size:18px;font-weight:800}
+.price-old{color:var(--text-light);font-size:13px;text-decoration:line-through}
+.product-meta{display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-size:12px;color:var(--text-light)}
+.discount

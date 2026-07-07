@@ -1,0 +1,120 @@
+# 段先生 v17.0 Helm Chart 配置
+
+replicaCount: 2
+
+image:
+  repository: duan-xiansheng
+  tag: v17.0
+  pullPolicy: IfNotPresent
+
+# 服务配置
+service:
+  type: ClusterIP
+  webPort: 3000
+  apiPort: 8080
+
+# 入口配置
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: 100m
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - host: duan.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: duan-tls
+      hosts:
+        - duan.example.com
+
+# 资源配置
+resources:
+  limits:
+    cpu: 2000m
+    memory: 2Gi
+  requests:
+    cpu: 500m
+    memory: 512Mi
+
+# 自动扩缩
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+# 持久化存储
+persistence:
+  enabled: true
+  storageClass: standard
+  accessMode: ReadWriteOnce
+  size: 10Gi
+  mountPath: /app/.duan
+
+# 环境变量
+env:
+  NODE_ENV: production
+  DEFAULT_MODEL_PROVIDER: doubao
+  DEFAULT_MODEL: doubao-seed-2.0-lite
+  LOG_LEVEL: info
+
+# 敏感变量（从 Secret 注入）
+secrets:
+  OPENAI_API_KEY: ""
+  AZURE_SPEECH_KEY: ""
+  AZURE_SPEECH_REGION: "eastasia"
+  HA_BASE_URL: ""
+  HA_TOKEN: ""
+  MIHOME_SID: ""
+
+# Redis 依赖
+redis:
+  enabled: true
+  auth:
+    enabled: false
+  master:
+    persistence:
+      size: 5Gi
+
+# Qdrant 向量数据库依赖
+qdrant:
+  enabled: true
+  persistence:
+    size: 20Gi
+
+# 健康检查
+healthcheck:
+  liveness:
+    httpGet:
+      path: /api/v1/health
+      port: api
+    initialDelaySeconds: 40
+    periodSeconds: 30
+  readiness:
+    httpGet:
+      path: /api/v1/health
+      port: api
+    initialDelaySeconds: 20
+    periodSeconds: 10
+
+# 节点选择器
+nodeSelector: {}
+
+# 容忍度
+tolerations: []
+
+# 亲和性
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: duan-agent
+          topologyKey: kubernetes.io/hostname

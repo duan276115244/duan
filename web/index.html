@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>段先生 v19.0 · 自主进化智能体</title>
+<link rel="stylesheet" href="colors.css">
+<link rel="stylesheet" href="style.css">
+<style>
+  :root {
+    --sidebar-w: 280px;
+    --right-w: 320px;
+    --header-h: 60px;
+    --font: 'Inter', system-ui, -apple-system, sans-serif;
+    --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+    --radius: 12px;
+    --radius2: 16px;
+    --radius3: 24px;
+  }
+</style>
+</head>
+<body>
+<div class="background-effects">
+  <div class="grid-bg"></div>
+  <div class="glow-orbs">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+  </div>
+  <div class="scan-lines"></div>
+</div>
+
+<div class="app-container">
+  <!-- ===== 侧边栏 ===== -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-glow"></div>
+    <div class="sidebar-header">
+      <div class="avatar-wrapper">
+        <div class="avatar">
+          <div class="avatar-icon">🧠</div>
+          <div class="avatar-pulse"></div>
+        </div>
+      </div>
+      <div class="sidebar-info">
+        <div class="sidebar-title">段先生</div>
+        <div class="sidebar-subtitle">v19.0 · J.A.R.V.I.S.</div>
+      </div>
+      <div class="status-dot online"></div>
+    </div>
+    
+    <div class="sidebar-search-wrapper">
+      <div class="search-icon">🔍</div>
+      <input type="text" class="sidebar-search" placeholder="搜索对话..." oninput="filterConversations(this.value)">
+    </div>
+    
+    <div class="sidebar-list" id="convList">
+      <div class="conv-item active">
+        <div class="conv-avatar">💬</div>
+        <div class="conv-content">
+          <div class="conv-title">新的对话</div>
+          <div class="conv-meta">现在 · 0 条消息</div>
+        </div>
+      </div>
+    </div>
+    
+    <button class="new-chat-btn" onclick="newChat()">
+      <span class="btn-icon">＋</span>
+      <span class="btn-text">新对话</span>
+    </button>
+    
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+  </aside>
+
+  <!-- ===== 主内容区 ===== -->
+  <main class="main-content">
+    <header class="main-header">
+      <div class="header-left">
+        <button class="menu-toggle" id="menuToggle" onclick="toggleSidebar()">
+          <span></span>
+          <span></span>
+          <span></span>
+        </button>
+        <div class="model-indicator">
+          <div class="indicator-dot"></div>
+          <span>段先生 v19.0</span>
+        </div>
+      </div>
+      
+      <div class="header-center">
+        <div class="consciousness-bar">
+          <div class="bar-label">意识</div>
+          <div class="bar-track">
+            <div class="bar-fill" id="consciousnessBar" style="width: 75%"></div>
+          </div>
+          <div class="bar-value">75%</div>
+        </div>
+      </div>
+      
+      <div class="header-actions">
+        <!-- V19 贾维斯增强：Web 端贾维斯模式入口 -->
+        <button class="action-btn" onclick="toggleJarvisMode()" title="贾维斯语音模式">
+          <span class="btn-icon">🎙️</span>
+        </button>
+        <button class="action-btn" id="themeBtn" onclick="cycleTheme()" title="切换主题">
+          <span class="btn-icon">🌙</span>
+        </button>
+        <button class="action-btn" onclick="toggleRightPanel()" title="切换面板">
+          <span class="btn-icon">📊</span>
+        </button>
+        <button class="action-btn" onclick="clearChat()" title="清空对话">
+          <span class="btn-icon">🗑️</span>
+        </button>
+        <button class="action-btn" onclick="exportChat()" title="导出对话">
+          <span class="btn-icon">📥</span>
+        </button>
+        <button class="action-btn settings-btn" onclick="openSettings()" title="设置">
+          <span class="btn-icon">⚙️</span>
+        </button>
+      </div>
+    </header>
+
+    <div class="chat-area" id="chatArea">
+      <div class="chat-scroll" id="chatScroll">
+        <div class="welcome-screen" id="welcome">
+          <div class="welcome-glow"></div>
+          <div class="welcome-content">
+            <div class="welcome-icon">
+              <div class="icon-ring"></div>
+              <div class="icon-inner">🧠</div>
+            </div>
+            <h1>段先生 v19.0</h1>
+            <p class="welcome-subtitle">自主进化智能体系统</p>
+            <p class="welcome-desc">深度学习 · 自主决策 · 持续进化</p>
+            <div class="quick-actions">
+              <button class="quick-btn" onclick="sendQuickPrompt('帮我分析当前系统状态')">
+                <span class="quick-icon">📊</span>
+                <span>系统状态</span>
+              </button>
+              <button class="quick-btn" onclick="sendQuickPrompt('帮我优化代码性能')">
+                <span class="quick-icon">⚡</span>
+                <span>性能优化</span>
+              </button>
+              <button class="quick-btn" onclick="sendQuickPrompt('生成一个网页项目')">
+                <span class="quick-icon">🌐</span>
+                <span>网页项目</span>
+              </button>
+              <button class="quick-btn" onclick="sendQuickPrompt('检查代码质量')">
+                <span class="quick-icon">🔍</span>
+                <span>代码审查</span>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div id="messageList"></div>
+      </div>
+    </div>
+
+    <div class="chat-input-wrapper">
+      <div class="input-tools">
+        <button class="tool-btn" onclick="toggleTool(this,'code')" data-tool="code">
+          <span>💻</span>
+          <span class="tool-label">代码</span>
+        </button>
+        <button class="tool-btn" onclick="toggleTool(this,'image')" data-tool="image">
+          <span>🖼️</span>
+          <span class="tool-label">图像</span>
+        </button>
+        <button class="tool-btn" onclick="toggleTool(this,'search')" data-tool="search">
+          <span>🔍</span>
+          <span class="tool-label">搜索</span>
+        </button>
+        <button class="tool-btn" onclick="toggleTool(this,'voice')" data-tool="voice">
+          <span>🎤</span>
+          <span class="tool-label">语音</span>
+        </button>
+      </div>
+      
+      <div class="input-area">
+        <textarea 
+          id="chatTextarea" 
+          placeholder="输入指令，段先生将为您执行..." 
+          rows="1" 
+          oninput="autoResize(this)" 
+          onkeydown="handleKeyDown(event)"
+        ></textarea>
+        <button class="send-btn" id="sendBtn" onclick="sendMessage()">
+          <span class="send-icon" id="sendIcon">➤</span>
+          <span class="send-spinner" id="sendSpinner"></span>
+        </button>
+      </div>
+    </div>
+  </main>
+
+  <!-- ===== 右侧面板 ===== -->
+  <aside class="right-panel" id="rightPanel">
+    <div class="panel-glow"></div>
+    <div class="panel-header">
+      <div class="panel-tabs">
+        <button class="tab active" onclick="switchPanelTab(this,'stats')">
+          <span>📊</span>
+          <span class="tab-label">状态</span>
+        </button>
+        <button class="tab" onclick="switchPanelTab(this,'tools')">
+          <span>🔧</span>
+          <span class="tab-label">工具</span>
+        </button>
+        <button class="tab" onclick="switchPanelTab(this,'info')">
+          <span>ℹ️</span>
+          <span class="tab-label">关于</span>
+        </button>
+      </div>
+    </div>
+    
+    <div class="panel-content" id="panelContent">
+      <div id="panel-stats" class="panel-section">
+        <h3>系统状态</h3>
+        <div class="stat-grid">
+          <div class="stat-card">
+            <div class="stat-icon">📡</div>
+            <div class="stat-value" id="statVersion">v19.0</div>
+            <div class="stat-label">版本</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">🎯</div>
+            <div class="stat-value" id="statMode">本地</div>
+            <div class="stat-label">模式</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">💬</div>
+            <div class="stat-value" id="statSessions">-</div>
+            <div class="stat-label">会话</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">🛠️</div>
+            <div class="stat-value" id="statTools">-</div>
+            <div class="stat-label">工具</div>
+          </div>
+        </div>
+        
+        <div class="energy-section">
+          <h4>能量状态</h4>
+          <div class="energy-bar">
+            <div class="energy-fill" id="energyBar" style="width: 85%"></div>
+          </div>
+          <div class="energy-meta">
+            <span>能量: <span id="energyValue">85%</span></span>
+            <span>情绪: <span id="moodValue">积极</span></span>
+          </div>
+        </div>
+        
+        <div class="heartbeat-section">
+          <h4>心跳系统</h4>
+          <div class="heartbeat-indicator">
+            <div class="heartbeat-pulse"></div>
+            <span>运行中</span>
+          </div>
+          <div class="heartbeat-count">心跳数: <span id="heartbeatCount">0</span></div>
+        </div>
+      </div>
+      
+      <div id="panel-tools" class="panel-section" style="display:none">
+        <h3>可用工具</h3>
+        <div class="tools-list" id="toolsList">
+          <div class="tool-item">
+            <span class="tool-icon">🔧</span>
+            <span class="tool-name">加载中...</span>
+          </div>
+        </div>
+      </div>
+      
+      <div id="panel-info" class="panel-section" style="display:none">
+        <h3>关于段先生</h3>
+        <div class="info-content">
+          <div class="info-header">
+            <span class="info-icon">🧠</span>
+            <span class="info-title">J.A.R.V.I.S.</span>
+          </div>
+          <p>自主进化智能体系统</p>
+          <div class="info-features">
+            <div class="feature-item">• 深度推理与决策</div>
+            <div class="feature-item">• 工具调用与环境交互</div>
+            <div class="feature-item">• 自我进化与代码修改</div>
+            <div class="feature-item">• 目标设定与追踪</div>
+            <div class="feature-item">• 多Agent协作</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<!-- V19 贾维斯增强：Web 端贾维斯模式面板 -->
+<div id="jarvisModePanel" style="display:none; position:fixed; bottom:20px; right:20px; width:320px; background:rgba(15,23,42,0.95); border:1px solid #8B5CF6; border-radius:12px; padding:16px; z-index:1000; box-shadow:0 8px 32px rgba(139,92,246,0.3);">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+    <span style="color:#8B5CF6; font-weight:bold;">🎙️ 贾维斯模式</span>
+    <button id="jarvisCloseBtn" style="background:none; border:none; color:#94A3B8; cursor:pointer; font-size:18px;">×</button>
+  </div>
+  <div id="jarvisStatus" style="color:#06B6D4; font-size:13px; margin-bottom:8px;">点击麦克风开始对话</div>
+  <div style="display:flex; gap:8px; margin-bottom:8px;">
+    <button id="jarvisMicBtn" style="flex:1; background:#8B5CF6; color:white; border:none; padding:8px; border-radius:6px; cursor:pointer;">🎤 麦克风</button>
+    <button id="jarvisSpeakBtn" style="flex:1; background:#06B6D4; color:white; border:none; padding:8px; border-radius:6px; cursor:pointer;">🔊 播报</button>
+  </div>
+  <div style="display:flex; gap:8px; margin-bottom:8px;">
+    <label style="font-size:12px; color:#94A3B8; display:flex; align-items:center; gap:4px;">
+      <input type="checkbox" id="jarvisAutoSpeak" checked> 自动播报
+    </label>
+    <label style="font-size:12px; color:#94A3B8; display:flex; align-items:center; gap:4px;">
+      <input type="checkbox" id="jarvisContinuous" checked> 连续对话
+    </label>
+  </div>
+  <div id="jarvisTranscript" style="max-height:200px; overflow-y:auto; font-size:13px; color:#E2E8F0; background:rgba(0,0,0,0.3); padding:8px; border-radius:6px;"></div>
+</div>
+
+<script src="app.js"></script>
+<script src="jarvis-mode.js"></script>
+</body>
+</html>

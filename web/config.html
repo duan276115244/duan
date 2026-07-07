@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>段先生 - 配置中心</title>
+<link rel="stylesheet" href="config.css">
+</head>
+<body>
+<div class="app-container">
+  <div class="sidebar">
+    <div class="logo-section">
+      <div class="logo">
+        <span class="logo-icon">🤖</span>
+        <span class="logo-text">段先生</span>
+      </div>
+      <div class="version">v19.0</div>
+    </div>
+    <nav class="nav-tabs">
+      <button class="nav-tab active" data-tab="providers">
+        <span class="tab-icon">🔑</span>
+        <span class="tab-label">AI 提供商</span>
+      </button>
+      <button class="nav-tab" data-tab="channels">
+        <span class="tab-icon">📱</span>
+        <span class="tab-label">移动通道</span>
+      </button>
+      <button class="nav-tab" data-tab="settings">
+        <span class="tab-icon">⚙️</span>
+        <span class="tab-label">系统设置</span>
+      </button>
+    </nav>
+    <div class="sidebar-footer">
+      <button class="footer-btn" onclick="resetAllConfig()">重置配置</button>
+    </div>
+  </div>
+
+  <main class="main-content">
+    <header class="page-header">
+      <div class="header-title">
+        <h1 id="page-title">AI 提供商配置</h1>
+        <p id="page-desc">管理您的 AI 模型提供商和 API 密钥</p>
+      </div>
+      <div class="header-actions">
+        <button class="btn btn-secondary" onclick="testAllProviders()">测试连接</button>
+        <button class="btn btn-primary" onclick="saveAllConfig()">保存配置</button>
+      </div>
+    </header>
+
+    <div class="tab-content" id="providers-tab">
+      <div class="quick-start">
+        <div class="quick-card coding-plan-card" onclick="openAddModal('coding_plan')">
+          <div class="quick-icon">💻</div>
+          <div class="quick-info">
+            <h3>火山引擎 Coding Plan</h3>
+            <p>编程专用订阅套餐，支持多种模型智能调度</p>
+          </div>
+          <div class="quick-arrow">→</div>
+        </div>
+        <div class="quick-card" onclick="openAddModal('doubao')">
+          <div class="quick-icon">🟣</div>
+          <div class="quick-info">
+            <h3>字节豆包（火山引擎）</h3>
+            <p>接入点模式，创建自定义端点</p>
+          </div>
+          <div class="quick-arrow">→</div>
+        </div>
+        <div class="quick-card" onclick="openAddModal('custom')">
+          <div class="quick-icon">⚙️</div>
+          <div class="quick-info">
+            <h3>自定义 API</h3>
+            <p>兼容 OpenAI API 的任意服务</p>
+          </div>
+          <div class="quick-arrow">→</div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-header">
+          <h2>已配置的提供商</h2>
+          <button class="btn btn-outline" onclick="openAddModal()">添加提供商</button>
+        </div>
+        <div id="providers-list" class="providers-grid">
+          <div class="empty-state">
+            <div class="empty-icon">📭</div>
+            <h3>暂无配置的提供商</h3>
+            <p>点击上方按钮或使用快捷卡片添加</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-header">
+          <h2>推荐免费方案</h2>
+        </div>
+        <div class="recommendations">
+          <div class="rec-card" onclick="openAddModal('groq')">
+            <div class="rec-badge free">免费</div>
+            <div class="rec-icon">⚡</div>
+            <div class="rec-info">
+              <h4>Groq</h4>
+              <p>极速推理，每天 14,400 次免费请求</p>
+            </div>
+          </div>
+          <div class="rec-card" onclick="openAddModal('gemini')">
+            <div class="rec-badge free">免费</div>
+            <div class="rec-icon">🌐</div>
+            <div class="rec-info">
+              <h4>Google Gemini</h4>
+              <p>多模态模型，每天 1,500 次免费请求</p>
+            </div>
+          </div>
+          <div class="rec-card" onclick="openAddModal('siliconflow')">
+            <div class="rec-badge free">免费</div>
+            <div class="rec-icon">🔬</div>
+            <div class="rec-info">
+              <h4>SiliconFlow</h4>
+              <p>大量免费模型，国内直连</p>
+            </div>
+          </div>
+          <div class="rec-card" onclick="openAddModal('openrouter')">
+            <div class="rec-badge free">免费</div>
+            <div class="rec-icon">🔗</div>
+            <div class="rec-info">
+              <h4>OpenRouter</h4>
+              <p>聚合 200+ 模型，含免费模型</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-content hidden" id="channels-tab">
+      <div class="section">
+        <div class="section-header">
+          <h2>移动端交互通道</h2>
+          <p class="section-desc">配置多平台移动端交互，支持微信、Telegram、钉钉等</p>
+        </div>
+        <div class="channels-grid" id="channels-list">
+          <div class="channel-card" data-channel="wecom">
+            <div class="channel-header">
+              <div class="channel-icon">💼</div>
+              <div class="channel-info">
+                <h3>企业微信</h3>
+                <p>微信群机器人 Webhook</p>
+              </div>
+              <label class="channel-toggle">
+                <input type="checkbox" class="toggle-input">
+                <span class="toggle-track"></span>
+              </label>
+            </div>
+            <div class="channel-config">
+              <div class="form-group">
+                <label>Webhook URL</label>
+                <input type="text" class="config-input" placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=..." data-field="webhook">
+              </div>
+            </div>
+          </div>
+          <div class="channel-card" data-channel="wechat">
+            <div class="channel-header">
+              <div class="channel-icon">💬</div>
+              <div class="channel-info">
+                <h3>个人微信</h3>
+                <p>通过第三方桥接服务</p>
+              </div>
+              <label class="channel-toggle">
+                <input type="checkbox" class="toggle-input">
+                <span class="toggle-track"></span>
+              </label>
+            </div>
+            <div class="channel-config">
+              <div class="form-group">
+                <label>Bot API URL</label>
+                <input type="text" class="config-input" placeholder="http://localhost:8080" data-field="url">
+              </div>
+            </div>
+          </div>
+          <div class="channel-card" data-channel="telegram">
+            <div class="channel-header">
+              <div class="channel-icon">📢</div>
+              <div class="channel-info">
+                <h3>Telegram</h3>
+                <p>Telegram Bot 集成</p>
+              </div>
+              <label class="channel-toggle">
+                <input type="checkbox" class="toggle-input">
+                <span class="toggle-track"></span>
+              </label>
+            </div>
+            <div class="channel-config">
+              <div class="form-group">
+                <label>Bot Token</label>
+                <input type="text" class="config-input" placeholder="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11" data-field="token">
+              </div>
+            </div>
+          </div>
+          <div class="channel-card" data-channel="dingtalk">
+            <div class="channel-header">
+              <div class="channel-icon">🔔</div>
+              <div class="channel-info">
+                <h3>钉钉</h3>
+                <p>DingTalk 机器人 Webhook</p>
+              </div>
+              <label class="channel-toggle">
+                <input type="checkbox" class="toggle-input">
+                <span class="toggle-track"></span>
+              </label>
+            </div>
+            <div class="channel-config">
+              <div class="form-group">
+                <label>Webhook URL</label>
+                <input type="text" class="config-input" placeholder="https://oapi.dingtalk.com/robot/send?access_token=..." data-field="webhook">
+              </div>
+            </div>
+          </div>
+          <div class="channel-card" data-channel="feishu">
+            <div class="channel-header">
+              <div class="channel-icon">📧</div>
+              <div class="channel-info">
+                <h3>飞书</h3>
+                <p>Feishu/Lark 机器人</p>
+              </div>
+              <label class="channel-toggle">
+                <input type="checkbox" class="toggle-input">
+                <span class="toggle-track"></span>
+              </label>
+            </div>
+            <div class="channel-config">
+              <div class="form-group">
+                <label>Webhook URL</label>
+                <input type="text" class="config-input" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/..." data-field="webhook">
+              </div>
+            </div>
+          </div>
+          <div class="channel-card" data-channel="email">
+            <div class="channel-header">
+              <div class="channel-icon">✉️</div>
+              <div class="channel-info">
+                <h3>邮件 SMTP</h3>
+                <p>通过邮件发送通知</p>
+              </div>
+              <label class="channel-toggle">
+                <input type="checkbox" class="toggle-input">
+                <span class="toggle-track"></span>
+              </label>
+            </div>
+            <div class="channel-config">
+              <div class="form-row">
+                <div class="form-group">
+                  <label>SMTP 服务器</label>
+                  <input type="text" class="config-input" placeholder="smtp.gmail.com" data-field="host">
+                </div>
+                <div class="form-group">
+                  <label>端口</label>
+                  <input type="text" class="config-input" placeholder="587" data-field="port">
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>用户名</label>
+                  <input type="text" class="config-input" placeholder="your@email.com" data-field="user">
+                </div>
+                <div class="form-group">
+                  <label>密码/授权码</label>
+                  <input type="password" class="config-input" placeholder="******" data-field="pass">
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-content hidden" id="settings-tab">
+      <div class="section">
+        <div class="section-header">
+          <h2>默认模型</h2>
+        </div>
+        <div class="settings-card">
+          <div class="form-group">
+            <label>默认提供商</label>
+            <select id="default-provider" class="config-select">
+              <option value="">请选择</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>默认模型</label>
+            <select id="default-model" class="config-select">
+              <option value="">请选择</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-header">
+          <h2>智能体设置</h2>
+        </div>
+        <div class="settings-card">
+          <div class="setting-row">
+            <div class="setting-info">
+              <h4>自动保存记忆</h4>
+              <p>自动保存对话历史到长期记忆</p>
+            </div>
+            <label class="setting-toggle">
+              <input type="checkbox" id="setting-auto-save" checked>
+              <span class="toggle-track"></span>
+            </label>
+          </div>
+          <div class="setting-row">
+            <div class="setting-info">
+              <h4>多智能体模式</h4>
+              <p>启用子智能体协同工作</p>
+            </div>
+            <label class="setting-toggle">
+              <input type="checkbox" id="setting-multi-agent" checked>
+              <span class="toggle-track"></span>
+            </label>
+          </div>
+          <div class="setting-row">
+            <div class="setting-info">
+              <h4>智能任务检测</h4>
+              <p>自动识别任务类型并分配合适的智能体</p>
+            </div>
+            <label class="setting-toggle">
+              <input type="checkbox" id="setting-smart-detection" checked>
+              <span class="toggle-track"></span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-header">
+          <h2>推理参数</h2>
+        </div>
+        <div class="settings-card">
+          <div class="form-row">
+            <div class="form-group">
+              <label>温度 (Temperature)</label>
+              <div class="range-control">
+                <input type="range" id="setting-temperature" min="0" max="2" step="0.1" value="0.7">
+                <span class="range-value" id="temp-value">0.7</span>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>最大 Token</label>
+              <select id="setting-max-tokens" class="config-select">
+                <option value="1024">1024</option>
+                <option value="2048">2048</option>
+                <option value="4096" selected>4096</option>
+                <option value="8192">8192</option>
+                <option value="16384">16384</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-header">
+          <h2>网络设置</h2>
+        </div>
+        <div class="settings-card">
+          <div class="form-row">
+            <div class="form-group">
+              <label>HTTP 代理</label>
+              <input type="text" id="setting-http-proxy" class="config-input" placeholder="http://proxy:port">
+            </div>
+            <div class="form-group">
+              <label>HTTPS 代理</label>
+              <input type="text" id="setting-https-proxy" class="config-input" placeholder="https://proxy:port">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>请求超时 (秒)</label>
+              <input type="number" id="setting-timeout" class="config-input" value="60" min="10" max="300">
+            </div>
+            <div class="form-group">
+              <label>重试次数</label>
+              <input type="number" id="setting-retry" class="config-input" value="3" min="1" max="10">
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="modal-overlay hidden" id="add-provider-modal">
+  <div class="modal-container">
+    <div class="modal-header">
+      <h2 id="modal-title">添加 AI 提供商</h2>
+      <button class="modal-close" onclick="closeAddModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>选择提供商</label>
+        <select id="modal-provider" class="config-select">
+          <option value="">请选择提供商</option>
+        </select>
+      </div>
+      <div id="modal-provider-specific">
+        <div class="form-group">
+          <label>API Key</label>
+          <input type="password" id="modal-api-key" class="config-input" placeholder="输入 API Key">
+          <p class="form-hint" id="modal-key-hint">在提供商控制台获取 API Key</p>
+        </div>
+        <div class="form-group">
+          <label>选择模型</label>
+          <select id="modal-model" class="config-select">
+            <option value="">请选择模型</option>
+          </select>
+        </div>
+        <div id="modal-custom-url" class="hidden">
+          <div class="form-group">
+            <label>API 基础 URL</label>
+            <input type="text" id="modal-base-url" class="config-input" placeholder="https://api.example.com/v1">
+          </div>
+        </div>
+      </div>
+      <div class="form-group" id="modal-coding-plan-hint" class="hidden">
+        <div class="hint-box warning">
+          <span class="hint-icon">⚠️</span>
+          <div class="hint-content">
+            <h4>Coding Plan 注意事项</h4>
+            <p>1. 需先在火山引擎开通 Coding Plan 包月订阅</p>
+            <p>2. API Key 使用接入密钥（ark-xxx 格式）</p>
+            <p>3. 模型必须在订阅套餐内</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeAddModal()">取消</button>
+      <button class="btn btn-primary" onclick="addProvider()">添加</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="confirm-modal">
+  <div class="modal-container small">
+    <div class="modal-header">
+      <h2>确认操作</h2>
+      <button class="modal-close" onclick="closeConfirmModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <p id="confirm-message">确定要执行此操作吗？</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeConfirmModal()">取消</button>
+      <button class="btn btn-danger" id="confirm-btn">确定</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+
+<script src="config.js"></script>
+</body>
+</html>
