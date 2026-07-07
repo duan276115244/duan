@@ -1708,6 +1708,9 @@ export function createAgentLoop(
     planReviewCallback: callbacks?.planReviewCallback,
     approvalCallback: callbacks?.approvalCallback,
     toolRegistry: adapter,
+    // P1 去重：注入 bootstrap L639 创建并已 startAutoHeal 的共享实例
+    // 避免 EnhancedAgentLoop 构造器自建第二个独立 SelfHealingEngine（未启动 autoHeal、状态不一致）
+    selfHealingEngine: modules.selfHealingEngine,
   });
 
   // 注入模型库与学习系统

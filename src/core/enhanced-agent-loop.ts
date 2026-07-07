@@ -165,6 +165,10 @@ export interface EnhancedLoopConfig {
   enableCrashRecovery?: boolean;
   /** 是否启用虚拟文件系统 */
   enableVFS?: boolean;
+  /** P1 去重：注入 bootstrap 创建并已 startAutoHeal 的共享 SelfHealingEngine 实例。
+   *  未提供时回退到自建实例（仅用于脱离 bootstrap 的独立运行/测试场景）。
+   *  避免 EnhancedAgentLoop 自建第二个独立实例（未启动 autoHeal、独立策略库、与主实例状态不一致）。 */
+  selfHealingEngine?: SelfHealingEngine;
 }
 
 // ============ 常量 ============
@@ -568,8 +572,10 @@ export class EnhancedAgentLoop {
       this._hierarchicalPlanner = new HierarchicalTaskPlanner();
     } catch {}
     // 初始化自我修复引擎（5大类错误分类 + 策略库 + 效果追踪）
+    // P1 去重修复：优先使用 bootstrap 创建并已 startAutoHeal 的共享实例
+    // 之前自建第二个独立实例（未启动 autoHeal、策略库与主实例状态不一致）
     try {
-      this._selfHealEngine = new SelfHealingEngine();
+      this._selfHealEngine = this.config.selfHealingEngine ?? new SelfHealingEngine();
     } catch {}
     this.registerNewModules();
     // 后台探测 Ollama（不阻塞构造函数）
