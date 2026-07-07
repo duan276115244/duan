@@ -627,14 +627,20 @@ export async function runDuan(): Promise<void> {
   }
 }
 
-// 启动
-runDuan().catch(err => {
-  console.error(chalk.hex('#EF4444')(`\n  ✗ 启动失败: ${err.message || err}`));
-  // P0 可访问性：--verbose 模式输出完整错误堆栈
-  if ((process as { __duanVerbose?: boolean }).__duanVerbose && err?.stack) {
-    console.error(err.stack);
-  } else {
-    console.error(chalk.dim('  使用 --verbose 查看完整堆栈'));
-  }
-  process.exit(1);
-});
+// 启动入口由 entry.ts 统一调用 runDuan()
+// 注意：此处不能再顶层调用 runDuan()，否则当 entry.ts 动态 import 本模块时
+// 会触发一次自动启动，加上 entry.ts 的显式调用 → 两个 runDuan 实例并发，
+// 导致每个用户输入被处理两次（双份对话/双份状态栏/双份日志）。
+// 如需独立运行此文件（如 tsx src/duan-v19.0.ts），保留下方显式入口：
+
+if (import.meta.url === `file://${process.argv[1]?.replace(/\\/g, '/')}`) {
+  runDuan().catch(err => {
+    console.error(chalk.hex('#EF4444')(`\n  ✗ 启动失败: ${err.message || err}`));
+    if ((process as { __duanVerbose?: boolean }).__duanVerbose && err?.stack) {
+      console.error(err.stack);
+    } else {
+      console.error(chalk.dim('  使用 --verbose 查看完整堆栈'));
+    }
+    process.exit(1);
+  });
+}
