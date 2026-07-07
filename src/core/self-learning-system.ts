@@ -207,8 +207,8 @@ export class SelfLearningSystem {
     };
 
     this.records.set(record.id, record);
-    // 更新倒排索引
-    for (const tag of record.tags) {
+    // 更新倒排索引（防御：tags 可能为 undefined，做兜底）
+    for (const tag of record.tags || []) {
       if (!this.tagIndex.has(tag)) {
         this.tagIndex.set(tag, new Set());
       }
@@ -510,8 +510,8 @@ export class SelfLearningSystem {
       // 分类匹配
       if (queryLower.includes(record.category)) score += 2;
 
-      // 标签匹配
-      for (const tag of record.tags) {
+      // 标签匹配（防御：tags 可能为 undefined）
+      for (const tag of record.tags || []) {
         if (queryLower.includes(tag.toLowerCase())) score += 1;
       }
 
@@ -938,19 +938,23 @@ export class SelfLearningSystem {
       if (fs.existsSync(recordsPath)) {
         const data = JSON.parse(fs.readFileSync(recordsPath, 'utf-8'));
         for (const record of data) {
-          // 边界校验：持久化 JSON 可能存在 schema 漂移（content 缺失/非字符串），
-          // 保证 content 为字符串，避免 generateReport/generateImprovementSuggestions 中 .substring 崩溃
+          // 边界校验：持久化 JSON 可能存在 schema 漂移
+          // - content 缺失/非字符串：保证为字符串，避免 .substring 崩溃
+          // - tags 缺失/非数组：保证为 string[]，避免 for...of 报 "record.tags is not iterable"
           if (typeof record.content !== 'string') record.content = '';
+          if (!Array.isArray(record.tags)) record.tags = [];
           this.records.set(record.id, record);
         }
       }
 
-      // 加载技能
+      // 加载技能（防御：data 可能非数组、skill 可能缺 id）
       const skillsPath = path.join(this.dataPath, 'skills.json');
       if (fs.existsSync(skillsPath)) {
         const data = JSON.parse(fs.readFileSync(skillsPath, 'utf-8'));
-        for (const skill of data) {
-          this.skills.set(skill.id, skill);
+        if (Array.isArray(data)) {
+          for (const skill of data) {
+            if (skill && typeof skill.id === 'string') this.skills.set(skill.id, skill);
+          }
         }
       }
 
@@ -958,8 +962,10 @@ export class SelfLearningSystem {
       const knowledgePath = path.join(this.dataPath, 'knowledge.json');
       if (fs.existsSync(knowledgePath)) {
         const data = JSON.parse(fs.readFileSync(knowledgePath, 'utf-8'));
-        for (const entry of data) {
-          this.knowledge.set(entry.id, entry);
+        if (Array.isArray(data)) {
+          for (const entry of data) {
+            if (entry && typeof entry.id === 'string') this.knowledge.set(entry.id, entry);
+          }
         }
       }
 
@@ -967,8 +973,10 @@ export class SelfLearningSystem {
       const patternsPath = path.join(this.dataPath, 'patterns.json');
       if (fs.existsSync(patternsPath)) {
         const data = JSON.parse(fs.readFileSync(patternsPath, 'utf-8'));
-        for (const pattern of data) {
-          this.patterns.set(pattern.id, pattern);
+        if (Array.isArray(data)) {
+          for (const pattern of data) {
+            if (pattern && typeof pattern.id === 'string') this.patterns.set(pattern.id, pattern);
+          }
         }
       }
     } catch {
