@@ -271,7 +271,9 @@ export function setupErrorHandlers(app: express.Application): void {
       res.status(500).json(errorResponse);
     } else {
       try {
-        res.write(`data: ${JSON.stringify({ type: 'error', chunk: '服务暂时不可用，请重试', code: 'STREAM_ERROR' })}\n\n`);
+        // 字段契约：前端 useApi.ts 读 data.content || data.data || data.message
+        // 必须用 content（不能用 chunk），否则前端 fallback 显示无意义的"Agent 错误"
+        res.write(`data: ${JSON.stringify({ type: 'error', content: '服务暂时不可用，请重试', code: 'STREAM_ERROR' })}\n\n`);
         res.end();
       } catch { /* 连接已关闭 */ }
     }
