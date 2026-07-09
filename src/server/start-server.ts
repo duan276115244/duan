@@ -13,6 +13,22 @@ export function startServer(
   onPortChange: (port: number) => void,
   initialPort?: number,
 ): Promise<void> {
+  // 注册进程级错误兜底（Web 独立模式下 desktop/lib/logger.js 的处理器未加载）
+  // Electron 模式下 logger.js 已注册同类处理器，Node 允许多监听器共存不会冲突
+  if (process.listenerCount('unhandledRejection') === 0) {
+    process.on('unhandledRejection', (reason) => {
+      const msg = reason instanceof Error ? (reason.stack || reason.message) : String(reason);
+      console.error('[FATAL] 未处理的 Promise 拒绝:', msg);
+    });
+  }
+  if (process.listenerCount('uncaughtException') === 0) {
+    process.on('uncaughtException', (err) => {
+      const msg = err instanceof Error ? (err.stack || err.message) : String(err);
+      console.error('[FATAL] 未捕获的异常:', msg);
+      // 不主动 exit：与 Electron 模式 logger.js 行为一致，避免单次异常导致整个服务崩溃
+    });
+  }
+
   const BASE_PORT = parseInt(process.env.PORT || '3001', 10);
 
   // 启动统一配置文件监听（三端实时同步）
