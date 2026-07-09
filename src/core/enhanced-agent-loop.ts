@@ -3491,7 +3491,7 @@ export class EnhancedAgentLoop {
               const idx = tc.index ?? 0;
               // 调试日志：记录原始 tool_call chunk（便于排查参数为空问题）
               if (!tc.function?.arguments && tc.function?.name) {
-                console.log(`[AgentLoop DEBUG] tool_call chunk: idx=${idx}, name=${tc.function.name}, id=${tc.id}, hasArgs=${!!tc.function?.arguments}, rawKeys=${Object.keys(tc).join(',')}, fnKeys=${tc.function ? Object.keys(tc.function).join(',') : 'N/A'}`);
+                console.warn(`[AgentLoop DEBUG] tool_call chunk: idx=${idx}, name=${tc.function.name}, id=${tc.id}, hasArgs=${!!tc.function?.arguments}, rawKeys=${Object.keys(tc).join(',')}, fnKeys=${tc.function ? Object.keys(tc.function).join(',') : 'N/A'}`);
               }
               if (!toolCalls[idx]) {
                 toolCalls[idx] = { id: tc.id || '', name: '', arguments: '' };
@@ -5113,7 +5113,7 @@ export class EnhancedAgentLoop {
               toolArgs,
               entry.definition.parameters,
               riskLevel as any,
-              async (args) => entry.definition.execute(args),
+              (args) => Promise.resolve(entry.definition.execute(args)),
             );
             result = pipelineResult.success ? String(pipelineResult.output) : `❌ ${pipelineResult.error}`;
             // 如果管线修改了参数，使用修改后的参数
@@ -5717,7 +5717,7 @@ export class EnhancedAgentLoop {
    * P1-2: 执行 Extended Thinking — 多步逻辑检查 + 边缘情况枚举
    * 转发到 extended-thinking-service.ts 的无状态函数
    */
-  private async _runExtendedThinking(problem: string, depth: 'shallow' | 'medium' | 'deep'): Promise<string> {
+  private _runExtendedThinking(problem: string, depth: 'shallow' | 'medium' | 'deep'): Promise<string> {
     return runExtendedThinking(this._buildExtendedThinkingContext(), problem, depth);
   }
 
@@ -5882,7 +5882,7 @@ export class EnhancedAgentLoop {
         state.compactCount++;
         state.lastCompactTime = Date.now();
         state.tokensUsed = result.tokensUsed;
-        console.log(`[Compaction] CompactionSystem 压缩完成 ratio=${result.compressionRatio.toFixed(2)} tokens=${result.tokensUsed}/${result.tokenBudget}`);
+        console.info(`[Compaction] CompactionSystem 压缩完成 ratio=${result.compressionRatio.toFixed(2)} tokens=${result.tokensUsed}/${result.tokenBudget}`);
         return;
       } catch (err) {
         console.warn(`[Compaction] CompactionSystem 压缩失败，降级到 CompressionPipeline: ${(err as Error).message}`);
