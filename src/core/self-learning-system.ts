@@ -901,6 +901,11 @@ export class SelfLearningSystem {
     // 语义路径：embedding 余弦相似度
     try {
       const { embedder, align } = this.getEmbedder();
+      // 哈希嵌入的余弦相似度因共享 token 虚高（"交互:" "→" "ok..." 等公共前缀
+      // 贡献相同维度），不适用于 dedup；仅在注入真实语义提供者时启用语义路径
+      if (!embedder.hasSemanticProvider()) {
+        throw new Error('hash-fallback embedder unsuitable for semantic dedup');
+      }
       const queryVec = embedder.embed(content);
       let bestId: string | null = null;
       let bestScore = 0;
@@ -913,7 +918,7 @@ export class SelfLearningSystem {
         const score = align.alignScore(queryVec, vec);
         if (score > bestScore) { bestScore = score; bestId = c.id; }
       }
-      // 语义阈值 0.55（哈希向量分布与 Jaccard 不同，需调低）
+      // 语义阈值 0.55（真实语义提供者的余弦相似度分布）
       if (bestId && bestScore > 0.55) return bestId;
     } catch {
       // 降级到 Jaccard 重叠
