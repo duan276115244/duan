@@ -102,6 +102,9 @@ const TEAM_TEMPLATES: Record<string, Omit<AgentTeamConfig, 'members'> & { member
 
 // ============ 主类 ============
 
+/** 执行历史记录上限（FIFO 淘汰，防止 executions Map 无限增长导致内存泄漏） */
+const MAX_EXECUTIONS_HISTORY = 200;
+
 export class AgentTeamOrchestrator {
   private subAgentOrchestrator: SubAgentOrchestrator | null = null;
   private gitWorktreeManager: GitWorktreeManager | null = null;
@@ -308,6 +311,12 @@ export class AgentTeamOrchestrator {
     };
 
     this.executions.set(executionId, result);
+
+    // FIFO 淘汰：超过上限时删除最旧的执行记录（Map 保持插入顺序）
+    if (this.executions.size > MAX_EXECUTIONS_HISTORY) {
+      const oldestKey = this.executions.keys().next().value;
+      if (oldestKey) this.executions.delete(oldestKey);
+    }
 
     this.eventBus.emitSync('team.execution.completed', {
       executionId, teamName: config.name, success, duration: result.duration,
