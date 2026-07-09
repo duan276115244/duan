@@ -469,11 +469,14 @@ export function EditorPanel({ initialFile }: EditorPanelProps) {
           await electronAPI.editor.saveFile(selectedFile, content);
         }
       } else {
-        await fetch('/api/file', {
+        const resp = await fetch('/api/file', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ path: selectedFile, content }),
         });
+        if (!resp.ok) {
+          throw new Error(`保存失败: HTTP ${resp.status}`);
+        }
       }
       setModified(prev => { const next = new Set(prev); next.delete(selectedFile); return next; });
     } catch (err) {

@@ -178,6 +178,9 @@ export function PairingPage({ onBack }: { onBack?: () => void }) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({}),
         });
+        if (!resp.ok) {
+          throw new Error(`生成配对码失败: HTTP ${resp.status}`);
+        }
         data = await resp.json();
       }
       if (data?.success) {

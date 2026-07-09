@@ -220,12 +220,21 @@ export function useSubAgentStream() {
     if (isElectron()) {
       return window.electronAPI?.subAgent?.startTeam(templateName, taskGoal, extraContext);
     }
-    const res = await fetch('/api/subagent/team/start', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ templateName, taskGoal, extraContext }),
-    });
-    return res.json();
+    try {
+      const res = await fetch('/api/subagent/team/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ templateName, taskGoal, extraContext }),
+      });
+      if (!res.ok) {
+        console.warn(`启动团队失败: HTTP ${res.status}`);
+        return null;
+      }
+      return res.json();
+    } catch (error) {
+      console.warn('启动团队网络错误:', error);
+      return null;
+    }
   }, []);
 
   // 列出可用 Agent
@@ -233,8 +242,18 @@ export function useSubAgentStream() {
     if (isElectron()) {
       return window.electronAPI?.subAgent?.listAgents();
     }
-    const res = await fetch('/api/subagent/agents');
-    return res.json();
+    try {
+      const res = await fetch('/api/subagent/agents');
+      if (!res.ok) {
+        console.warn(`获取 Agent 列表失败: HTTP ${res.status}`);
+        return [];
+      }
+      const data = await res.json();
+      return Array.isArray(data) ? data : (data?.agents || []);
+    } catch (error) {
+      console.warn('获取 Agent 列表网络错误:', error);
+      return [];
+    }
   }, []);
 
   // 列出团队模板
@@ -242,8 +261,18 @@ export function useSubAgentStream() {
     if (isElectron()) {
       return window.electronAPI?.subAgent?.listTemplates();
     }
-    const res = await fetch('/api/subagent/team-templates');
-    return res.json();
+    try {
+      const res = await fetch('/api/subagent/team-templates');
+      if (!res.ok) {
+        console.warn(`获取团队模板失败: HTTP ${res.status}`);
+        return [];
+      }
+      const data = await res.json();
+      return Array.isArray(data) ? data : (data?.templates || []);
+    } catch (error) {
+      console.warn('获取团队模板网络错误:', error);
+      return [];
+    }
   }, []);
 
   return {

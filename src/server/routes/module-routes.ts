@@ -1,6 +1,10 @@
 import type express from 'express';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
 import { errMsg, type ServerContext } from '../services/app-context.js';
 import { getBestAvailableClient } from '../services/llm-clients.js';
+import { atomicWriteJsonSync } from '../../core/atomic-write.js';
 
 export function registerModuleRoutes(app: express.Application, ctx: ServerContext): void {
   const { learningEval, skillGen, userProfile, performanceMetrics } = ctx;
@@ -190,6 +194,121 @@ export function registerModuleRoutes(app: express.Application, ctx: ServerContex
     }
   });
 
+  // POST /api/skills/package - 打包技能（Web 模式对应 Electron 的 skill:package IPC）
+  // eslint-disable-next-line @typescript-eslint/no-misused-promises
+  app.post('/api/skills/package', (req: express.Request, res: express.Response) => {
+    try {
+      const { name, description, intent, toolsUsed, steps, keywords, examples, conversationSnippet } = req.body || {};
+      if (!name || !description) {
+        return res.status(400).json({ success: false, error: '技能名称和描述不能为空' });
+      }
+      // 安全校验技能名
+      const skillId = name.toLowerCase().replace(/[^a-z0-9_\-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+      if (!skillId || !/^[a-z0-9_\-]+$/.test(skillId)) {
+        return res.status(400).json({ success: false, error: '技能名称无效（仅允许小写字母、数字、下划线、连字符）' });
+      }
+
+      const homeDir = os.homedir();
+      const skillDir = path.join(homeDir, '.duan', 'skills', skillId);
+      if (!fs.existsSync(skillDir)) fs.mkdirSync(skillDir, { recursive: true });
+
+      // 构建 SKILL.md 内容
+      const kwList: string[] = Array.isArray(keywords) && keywords.length > 0
+        ? keywords : [intent || description.substring(0, 20)];
+      const exList: string[] = Array.isArray(examples) && examples.length > 0
+        ? examples : [intent || description.substring(0, 50)];
+      const toolList: string[] = Array.isArray(toolsUsed) ? toolsUsed : [];
+      const stepList: string[] = Array.isArray(steps) && steps.length > 0 ? steps : [];
+
+      // 生成 YAML frontmatter
+      const yamlLines = [
+        '---',
+        `name: ${skillId}`,
+        `id: ${skillId}`,
+        `domain: general`,
+        `description: ${description.replace(/\n/g, ' ')}`,
+        'keywords:',
+        ...kwList.map(k => `  - ${k}`),
+        'examples:',
+        ...exList.map(e => `  - ${e.replace(/\n/g, ' ')}`),
+        '---',
+      ];
+
+      // 生成技能正文
+      const bodyLines = [
+        `# ${name}`,
+        '',
+        `## 技能描述`,
+        description,
+        '',
+      ];
+
+      if (toolList.length > 0) {
+        bodyLines.push('## 使用工具', ...toolList.map(t => `- \`${t}\``), '');
+      }
+
+      if (stepList.length > 0) {
+        bodyLines.push('## 执行步骤');
+        stepList.forEach((step, i) => {
+          bodyLines.push(`${i + 1}. ${step}`);
+        });
+        bodyLines.push('');
+      }
+
+      if (conversationSnippet) {
+        bodyLines.push('## 成功案例', '```', conversationSnippet.substring(0, 2000), '```', '');
+      }
+
+      bodyLines.push('## 注意事项', '- 此技能从成功对话中自动打包生成', `- 创建时间: ${new Date().toISOString()}`);
+
+      const skillMdContent = [...yamlLines, '', ...bodyLines].join('\n');
+      const skillMdPath = path.join(skillDir, 'SKILL.md');
+      fs.writeFileSync(skillMdPath, skillMdContent, 'utf-8');
+
+      // 更新 discovered.json 注册表（使用原子写防止部分写入）
+      const discoveredPath = path.join(homeDir, '.duan', 'skills', 'discovered.json');
+      let discovered: unknown[] = [];
+      try {
+        if (fs.existsSync(discoveredPath)) {
+          const raw = JSON.parse(fs.readFileSync(discoveredPath, 'utf-8'));
+          discovered = Array.isArray(raw) ? raw : (raw.skills || []);
+        }
+      } catch { /* ignore */ }
+
+      // 移除同 ID 旧记录
+      const skillRecord = (s: unknown): string => {
+        const sk = s as Record<string, unknown>;
+        return (typeof sk.id === 'string' ? sk.id : '') || (typeof sk.name === 'string' ? sk.name : '');
+      };
+      discovered = discovered.filter(s => skillRecord(s) !== skillId);
+      // 添加新记录
+      discovered.push({
+        id: skillId,
+        name: skillId,
+        domain: 'general',
+        description,
+        keywords: kwList,
+        examples: exList,
+        source: 'user_defined',
+        confidence: 1.0,
+        installStatus: 'installed',
+        rating: 0,
+        usageCount: 1,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        toolsUsed: toolList,
+      });
+
+      const discoveredDir = path.dirname(discoveredPath);
+      if (!fs.existsSync(discoveredDir)) fs.mkdirSync(discoveredDir, { recursive: true });
+      atomicWriteJsonSync(discoveredPath, discovered);
+
+      res.json({ success: true, skillId, path: skillMdPath });
+    } catch (error) {
+      res.status(500).json({ success: false, error: errMsg(error) });
+    }
+  });
+
   // GET /api/skills - 列出所有技能
   app.get('/api/skills', (_req: express.Request, res: express.Response) => {
     try {
@@ -197,6 +316,46 @@ export function registerModuleRoutes(app: express.Application, ctx: ServerContex
       res.json(skills);
     } catch (error) {
       res.status(500).json({ error: errMsg(error) });
+    }
+  });
+
+  // GET /api/skills/marketplace - 获取技能市场列表
+  // 注意：必须在 /api/skills/:id 之前注册，否则 "marketplace" 会被当作 :id 匹配
+  app.get('/api/skills/marketplace', (req: express.Request, res: express.Response) => {
+    try {
+      const discoveredPath = path.join(os.homedir(), '.duan', 'skills', 'discovered.json');
+      if (!fs.existsSync(discoveredPath)) {
+        return res.json({ success: true, skills: [], total: 0, message: '暂无已发现的技能，请先运行技能发现' });
+      }
+      const raw = JSON.parse(fs.readFileSync(discoveredPath, 'utf-8'));
+      let skills: unknown[] = Array.isArray(raw) ? raw : (raw.discovered || raw.skills || []);
+
+      // 按相关性过滤（如果提供 query 参数 q）
+      const query = req.query.q as string | undefined;
+      if (query && typeof query === 'string' && query.trim()) {
+        const q = query.toLowerCase();
+        skills = skills.filter((s) => {
+          const sk = s as Record<string, unknown>;
+          return (
+            (typeof sk.name === 'string' && sk.name.toLowerCase().includes(q)) ||
+            (typeof sk.description === 'string' && sk.description.toLowerCase().includes(q)) ||
+            (Array.isArray(sk.keywords) && sk.keywords.some((k) => typeof k === 'string' && k.toLowerCase().includes(q)))
+          );
+        });
+      }
+
+      // 按置信度和评分排序
+      skills.sort((a, b) => {
+        const sa = a as Record<string, number>;
+        const sb = b as Record<string, number>;
+        const scoreA = (sa.confidence || 0) * 0.6 + ((sa.rating || 0) / 5) * 0.4;
+        const scoreB = (sb.confidence || 0) * 0.6 + ((sb.rating || 0) / 5) * 0.4;
+        return scoreB - scoreA;
+      });
+
+      res.json({ success: true, skills, total: skills.length });
+    } catch (error) {
+      res.status(500).json({ success: false, error: errMsg(error) });
     }
   });
 
