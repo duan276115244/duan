@@ -169,6 +169,19 @@ export class EvolutionMetrics {
     return samples.reduce((a, b) => a + b, 0) / samples.length;
   }
 
+  /**
+   * Phase C2: 获取运行时指标的 P95（50 样本窗口的 95 百分位）
+   * 用于 recall_latency 等延迟指标的真实尾部延迟测量（平均会掩盖长尾）
+   * 无样本返回 0
+   */
+  getRuntimeP95(metricId: string): number {
+    const samples = this._runtimeSamples.get(metricId);
+    if (!samples || samples.length === 0) return 0;
+    const sorted = [...samples].sort((a, b) => a - b);
+    const idx = Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95));
+    return sorted[idx];
+  }
+
   /** 获取运行时指标的当前样本数（用于诊断/测试） */
   getRuntimeSampleCount(metricId: string): number {
     return this._runtimeSamples.get(metricId)?.length ?? 0;

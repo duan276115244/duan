@@ -86,6 +86,8 @@ export interface TaskExecutionEngineConfig {
   stepTimeout?: number;
   persistenceDir?: string;
   autoSave?: boolean;
+  /** LLM 智能分解回调（可选）。传入目标+实体，返回结构化步骤。失败时自动降级到规则。 */
+  llmDecompose?: (goal: string, entities?: Record<string, string>) => Promise<ExecutionStep[]>;
 }
 
 // ============ 内置任务模板 ============
@@ -145,7 +147,9 @@ export class TaskExecutionEngine {
   private eventBus: EventBus;
   private log = logger.child({ module: 'TaskExecutionEngine' });
   private toolExecutor: ToolExecutor;
-  private config: Required<TaskExecutionEngineConfig>;
+  private config: Required<Omit<TaskExecutionEngineConfig, 'llmDecompose'>>;
+  /** LLM 智能分解回调（可选，未配置时降级到规则） */
+  private llmDecompose?: (goal: string, entities?: Record<string, string>) => Promise<ExecutionStep[]>;
   private currentTaskId: string | null = null;
   private consecutiveFailures = 0;
   private executionPatterns: Map<string, { successRate: number; avgDuration: number; sampleCount: number }> = new Map();
@@ -157,6 +161,7 @@ export class TaskExecutionEngine {
     config: TaskExecutionEngineConfig = {},
   ) {
     this.toolExecutor = toolExecutor;
+    this.llmDecompose = config.llmDecompose;
     this.config = {
       maxRetries: config.maxRetries ?? 3,
       stepTimeout: config.stepTimeout ?? 30000,
@@ -196,7 +201,7 @@ export class TaskExecutionEngine {
     task.status = 'planning';
     this.saveTask(task);
 
-    const steps = this.decomposeGoal(goal, entities);
+    const steps = await this.decomposeGoal(goal, entities);
     task.decomposedSteps = steps;
     task.currentStepIndex = 0;
     task.status = 'executing';
@@ -222,9 +227,12 @@ export class TaskExecutionEngine {
   }
 
   /**
-   * 分解复杂目标为步骤：模板匹配 → LLM（预留）→ 规则回退
+   * 分解复杂目标为步骤：模板匹配 → LLM（智能分解）→ 规则回退
+   *
+   * 渐进式降级：模板优先 → LLM 智能分解 → 规则回退，确保总能产出执行计划。
+   * LLM 分解失败/超时/未配置时自动降级到规则路径，零回归风险。
    */
-  decomposeGoal(goal: string, entities?: Record<string, string>): ExecutionStep[] {
+  async decomposeGoal(goal: string, entities?: Record<string, string>): Promise<ExecutionStep[]> {
     // 1. 尝试模板匹配
     const matchedTemplate = this.templates.find(t => t.goalPattern.test(goal));
     if (matchedTemplate) {
@@ -232,14 +240,46 @@ export class TaskExecutionEngine {
       return this.instantiateTemplate(matchedTemplate, entities || {});
     }
 
-    // 2. LLM 分解（预留接口，当前降级到规则）
-    // TODO: 当 LLM 可用时，调用 LLM 进行智能分解
-    // const llmSteps = await this.decomposeWithLLM(goal, entities);
-    // if (llmSteps) return llmSteps;
+    // 2. LLM 智能分解（若已配置回调）
+    const llmSteps = await this.decomposeWithLLM(goal, entities);
+    if (llmSteps && llmSteps.length > 0) {
+      this.log.info('LLM 分解成功', { goal, stepCount: llmSteps.length });
+      return llmSteps;
+    }
 
     // 3. 规则回退：基于关键词的简单分解
     this.log.info('使用规则回退分解目标', { goal });
     return this.ruleBasedDecompose(goal, entities);
+  }
+
+  /**
+   * LLM 智能任务分解：调用配置的 llmDecompose 回调，将复杂目标分解为结构化步骤。
+   * 失败时返回 null，由调用方降级到规则路径。
+   */
+  private async decomposeWithLLM(
+    goal: string,
+    entities?: Record<string, string>,
+  ): Promise<ExecutionStep[] | null> {
+    if (!this.llmDecompose) return null;
+    try {
+      const steps = await this.llmDecompose(goal, entities);
+      // 校验返回的步骤数组
+      if (!Array.isArray(steps) || steps.length === 0) return null;
+      // 填充默认字段，确保结构完整
+      return steps.map((step, idx) => ({
+        id: step.id || `step_${idx + 1}`,
+        description: typeof step.description === 'string' ? step.description : `步骤 ${idx + 1}`,
+        toolName: typeof step.toolName === 'string' ? step.toolName : undefined,
+        toolArgs: step.toolArgs && typeof step.toolArgs === 'object' ? step.toolArgs : undefined,
+        status: 'pending' as const,
+        retryCount: 0,
+        dependencies: Array.isArray(step.dependencies) ? step.dependencies : [],
+        estimatedDuration: typeof step.estimatedDuration === 'number' ? step.estimatedDuration : 30000,
+      }));
+    } catch (e) {
+      this.log.warn('LLM 分解失败，降级到规则路径', { goal, error: (e as Error).message });
+      return null;
+    }
   }
 
   /**

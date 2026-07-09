@@ -3,10 +3,10 @@
  *
  * 生产级代码质量分析系统：
  * - 词法/正则级语法分析（注意：当前为基于正则的启发式分析，
- *   无法可靠处理字符串字面量、注释、模板字符串中的伪匹配，
- *   例如注释里的 eval、字符串中的 SQL 文本；
- *   TODO: 引入真正的语法解析器以实现 AST 级别分析，
- *   推荐 @typescript-eslint/parser、Babel 或 tree-sitter）
+ *   Part C 增强：已加入字符串/注释区间检测，安全扫描自动跳过
+ *   字符串字面量与注释中的伪匹配（如注释里的 eval、字符串中的 SQL 文本）；
+ *   后续可进一步引入 AST 解析器（@typescript-eslint/parser、tree-sitter）
+ *   实现精确的节点级分析）
  * - 多语言风格合规检查（PEP8 / Airbnb / Google / gofmt）
  * - 安全漏洞扫描（15+ 种模式）
  * - 性能分析（N+1 查询、内存泄漏、低效循环等）
@@ -595,10 +595,16 @@ export class CodeQualityEngine {
 
   /**
    * 安全漏洞扫描
+   *
+   * Part C 增强：预先计算字符串字面量与注释区间，安全模式匹配时
+   * 跳过这些区间，消除"注释里的 eval、字符串中的 SQL 文本"等误报。
    */
   scanSecurity(code: string, language: string): CodeIssue[] {
     const issues: CodeIssue[] = [];
     const lines = code.split('\n');
+
+    // 预计算字符串/注释区间，用于过滤误报
+    const ignoreRanges = this.getStringAndCommentRanges(code, language);
 
     for (const pattern of SECURITY_PATTERNS) {
       if (!pattern.languages.includes(language) && !pattern.languages.includes(this.getLanguageFamily(language))) {
@@ -612,6 +618,12 @@ export class CodeQualityEngine {
       regex.lastIndex = 0;
 
       while ((match = regex.exec(code)) !== null) {
+        // 跳过位于字符串字面量或注释中的匹配（误报过滤）
+        if (this.isInStringOrComment(match.index, ignoreRanges)) {
+          if (match.index === regex.lastIndex) regex.lastIndex++;
+          continue;
+        }
+
         const lineNumber = this.getLineNumber(code, match.index);
         const column = this.getColumnNumber(code, match.index);
 
@@ -638,7 +650,7 @@ export class CodeQualityEngine {
 
     logger.debug('安全扫描完成', {
       module: 'code-quality-engine',
-      metadata: { language, issueCount: issues.length },
+      metadata: { language, issueCount: issues.length, ignoredRanges: ignoreRanges.length },
     });
 
     return issues;
@@ -1452,6 +1464,98 @@ export class CodeQualityEngine {
     }
 
     return result.join('\n');
+  }
+
+  // ============ Part C: 字符串/注释区间检测（误报过滤） ============
+
+  /**
+   * 计算代码中字符串字面量与注释的字符区间。
+   * 用于安全扫描时跳过这些上下文，避免"注释里的 eval"等误报。
+   *
+   * 支持：单/双引号字符串、模板字符串、行注释（// #）、块注释（/* *\/ """ '''）
+   */
+  private getStringAndCommentRanges(code: string, language: string): Array<{ start: number; end: number }> {
+    const ranges: Array<{ start: number; end: number }> = [];
+    const len = code.length;
+    let i = 0;
+
+    const isPython = language === 'python';
+    const lineComment = isPython ? '#' : '//';
+    const blockCommentStart = isPython ? '"""' : '/*';
+    const blockCommentEnd = isPython ? '"""' : '*/';
+    // Python 也支持 ''' 块注释
+    const pyAltStart = "'''";
+
+    while (i < len) {
+      // 块注释 /* ... */ 或 Python """...""" / '''...'''
+      if (code.startsWith(blockCommentStart, i) || (isPython && code.startsWith(pyAltStart, i))) {
+        const marker = code.startsWith(blockCommentStart, i) ? blockCommentStart : pyAltStart;
+        const start = i;
+        i += marker.length;
+        const endIdx = code.indexOf(marker, i);
+        if (endIdx === -1) {
+          ranges.push({ start, end: len });
+          break;
+        }
+        ranges.push({ start, end: endIdx + marker.length });
+        i = endIdx + marker.length;
+        continue;
+      }
+
+      // 行注释 // ... 或 # ...
+      if (code.startsWith(lineComment, i)) {
+        const start = i;
+        const nlIdx = code.indexOf('\n', i);
+        const end = nlIdx === -1 ? len : nlIdx;
+        ranges.push({ start, end });
+        i = end;
+        continue;
+      }
+
+      // 字符串字面量：单引号、双引号、模板字符串
+      const ch = code[i];
+      if (ch === '"' || ch === "'" || ch === '`') {
+        const start = i;
+        i++; // 跳过开引号
+        while (i < len) {
+          // 转义字符
+          if (code[i] === '\\') {
+            i += 2;
+            continue;
+          }
+          // 模板字符串内的 ${...} 表达式 — 简化处理：跳到下一个反引号
+          if (ch === '`' && code.startsWith('${', i)) {
+            // 跳过模板表达式（不深入解析嵌套）
+            const closeBrace = code.indexOf('}', i);
+            if (closeBrace !== -1) {
+              i = closeBrace + 1;
+              continue;
+            }
+          }
+          if (code[i] === ch) {
+            i++; // 跳过闭引号
+            break;
+          }
+          i++;
+        }
+        ranges.push({ start, end: i });
+        continue;
+      }
+
+      i++;
+    }
+
+    return ranges;
+  }
+
+  /**
+   * 检查给定字符位置是否位于字符串字面量或注释区间内。
+   */
+  private isInStringOrComment(index: number, ranges: Array<{ start: number; end: number }>): boolean {
+    for (const r of ranges) {
+      if (index >= r.start && index < r.end) return true;
+    }
+    return false;
   }
 
   // ============ 通用辅助方法 ============

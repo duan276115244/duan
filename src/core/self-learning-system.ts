@@ -17,6 +17,7 @@ import { tokenize } from './chinese-tokenizer.js';
 import { EventBus, Events } from './event-bus.js';
 import { atomicWriteJsonSync } from './atomic-write.js';
 import { duanPath } from './duan-paths.js';
+import { SimpleEmbedder, CrossAttention } from './attention-mechanism.js';
 
 // ============ 类型定义 ============
 
@@ -122,10 +123,23 @@ export class SelfLearningSystem {
   private readonly SAVE_THROTTLE_MS = 5000;
   /** 待保存标记 */
   private savePending: boolean = false;
+  /** Part G: 语义嵌入器（lazy 初始化，复用 smart-tool-selector 同款哈希向量） */
+  private embedder?: SimpleEmbedder;
+  private crossAttention?: CrossAttention;
+  /** 记录向量缓存（recordId → 向量），saveData 时失效 */
+  private recordVectorCache: Map<string, number[]> = new Map();
 
   constructor(modelLibrary: ModelLibrary, dataPath?: string) {
     this.modelLibrary = modelLibrary;
     this.dataPath = dataPath || duanPath('learning');
+    // 数据目录不存在时自动创建（递归），保证 loadData/saveData 路径拼接时父目录就绪
+    if (!fs.existsSync(this.dataPath)) {
+      try {
+        fs.mkdirSync(this.dataPath, { recursive: true });
+      } catch {
+        // 权限/并发竞态忽略，后续 saveData 会重试 mkdir
+      }
+    }
     this.loadData();
     this.initializeDefaultSkills();
   }
@@ -862,17 +876,58 @@ export class SelfLearningSystem {
     });
   }
 
+  /** Part G: lazy 获取嵌入器与交叉注意力对齐器（复用 smart-tool-selector 同款哈希向量） */
+  private getEmbedder(): { embedder: SimpleEmbedder; align: CrossAttention } {
+    if (!this.embedder) this.embedder = new SimpleEmbedder(256);
+    if (!this.crossAttention) this.crossAttention = new CrossAttention();
+    return { embedder: this.embedder, align: this.crossAttention };
+  }
+
+  /**
+   * 查找相似记录 — Part G 升级为 embedding 余弦相似度，Jaccard 重叠兜底。
+   *
+   * 语义路径：用 SimpleEmbedder 将内容映射为哈希向量，CrossAttention.alignScore
+   * 计算余弦相似度（与 smart-tool-selector 的 computeSemanticMatchScore 同源）。
+   * 向量按 recordId 缓存，避免重复计算。
+   * 兜底路径：embedder 异常时回退到原有的 Jaccard token 重叠。
+   */
   private findSimilarRecord(content: string, category: string): string | null {
-    const contentLower = content.toLowerCase();
+    const candidates: Array<{ id: string; content: string }> = [];
     for (const [id, record] of this.records) {
-      if (record.category === category) {
-        // 简单相似度：内容重叠度
-        const recordLower = record.content.toLowerCase();
-        const overlap = this.computeOverlap(contentLower, recordLower);
-        if (overlap > 0.6) return id;
-      }
+      if (record.category === category) candidates.push({ id, content: record.content });
     }
-    return null;
+    if (candidates.length === 0) return null;
+
+    // 语义路径：embedding 余弦相似度
+    try {
+      const { embedder, align } = this.getEmbedder();
+      const queryVec = embedder.embed(content);
+      let bestId: string | null = null;
+      let bestScore = 0;
+      for (const c of candidates) {
+        let vec = this.recordVectorCache.get(c.id);
+        if (!vec) {
+          vec = embedder.embed(c.content);
+          this.recordVectorCache.set(c.id, vec);
+        }
+        const score = align.alignScore(queryVec, vec);
+        if (score > bestScore) { bestScore = score; bestId = c.id; }
+      }
+      // 语义阈值 0.55（哈希向量分布与 Jaccard 不同，需调低）
+      if (bestId && bestScore > 0.55) return bestId;
+    } catch {
+      // 降级到 Jaccard 重叠
+    }
+
+    // 兜底：Jaccard token 重叠
+    const contentLower = content.toLowerCase();
+    let bestId: string | null = null;
+    let bestOverlap = 0;
+    for (const c of candidates) {
+      const overlap = this.computeOverlap(contentLower, c.content.toLowerCase());
+      if (overlap > bestOverlap) { bestOverlap = overlap; bestId = c.id; }
+    }
+    return (bestId && bestOverlap > 0.6) ? bestId : null;
   }
 
   private computeOverlap(a: string, b: string): number {
@@ -985,6 +1040,7 @@ export class SelfLearningSystem {
   }
 
   private saveData(): void {
+    this.recordVectorCache.clear(); // Part G4: 写盘前失效向量缓存，防御记录内容变更
     try {
       if (!fs.existsSync(this.dataPath)) {
         fs.mkdirSync(this.dataPath, { recursive: true });

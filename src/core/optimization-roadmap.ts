@@ -1289,6 +1289,26 @@ export class OptimizationRoadmap {
   }
 
   /**
+   * 添加优化项（运行时动态注入，例如由 SOTA 基准挑战发现 gap 后自动创建）
+   * @returns 添加后的 OptimizationItem（含计算出的 compositeScore 与 priority）
+   */
+  addOptimizationItem(item: OptimizationItem): OptimizationItem {
+    // 计算 compositeScore 与 priority
+    const scored = this.scoreOptimization(item);
+    item.compositeScore = scored.compositeScore;
+    item.priority = scored.priority;
+    this.items.set(item.id, item);
+    this.log.info('动态添加优化项', {
+      id: item.id,
+      title: item.title,
+      category: item.category,
+      priority: item.priority,
+      compositeScore: item.compositeScore,
+    });
+    return item;
+  }
+
+  /**
    * 获取统计数据
    */
   getStats(): RoadmapStats {

@@ -85,7 +85,7 @@ export class MultiStepReasoningFramework {
     logger.info('开始多步推理', { module: 'MultiStepReasoning', task: task.substring(0, 100) });
 
     // ===== 阶段1: 分解 =====
-    const plan = this.decompose(task);
+    const plan = await this.decompose(task);
     logger.info('分解完成', { module: 'MultiStepReasoning', subtasks: plan.subtasks.length, mode: plan.reasoningMode });
 
     // ===== 阶段2: 求解 + 阶段3: 验证 + 阶段4: 修正 =====
@@ -119,9 +119,7 @@ export class MultiStepReasoningFramework {
       }
 
       // 并发执行就绪任务。
-      // 注意：依赖分析当前为「串行降级实现」（见 analyzeDependencies），
-      // 强制构造线性依赖链，因此每轮通常只有一个就绪任务，实际表现为串行。
-      // 接入真实 DAG 分析（task-dependency-graph）后，此处可发挥真正的并行能力。
+      // analyzeDependencies 已升级为启发式 DAG：无依赖关系的任务可在此真正并行执行。
       await Promise.all(ready.map(async (subtask) => {
         subtask.status = 'running';
         try {
@@ -184,9 +182,9 @@ export class MultiStepReasoningFramework {
   /**
    * 阶段1: 分解 — 使用推理引擎分解复杂任务
    */
-  decompose(task: string): ReasoningPlan {
-    // 调用推理引擎分析任务
-    const reasoning = this.reasoningEngine.think(task, []);
+  async decompose(task: string): Promise<ReasoningPlan> {
+    // 调用推理引擎分析任务（think() 已升级为 LLM 优先 + 启发式降级）
+    const reasoning = await this.reasoningEngine.think(task, []);
     
     // 根据推理结论分解为子任务
     const subtasks = this.extractSubtasks(reasoning.conclusion, reasoning.steps);
@@ -312,22 +310,67 @@ export class MultiStepReasoningFramework {
   }
 
   /**
-   * 分析子任务依赖关系。
+   * 分析子任务依赖关系 — 启发式 DAG 构建。
    *
-   * ⚠️ 当前为「串行降级实现」（Serial Fallback）：
-   *   强制构造线性依赖链（每个任务依赖前一个），因此 solve() 中
-   *   「并行执行就绪任务」的设计会退化为串行执行，DAG/并行能力
-   *   在此实现下并不生效。
+   * 基于子任务 description 的数据流引用检测：
+   * - 若任务 B 的描述中引用了任务 A 的 id，则 B 依赖 A
+   * - 无引用的任务 dependsOn = []（独立可并行）
+   * - 循环依赖安全网：检测到环时回退到线性链，避免死锁
    *
-   * TODO: 接入 task-dependency-graph.ts 进行真实依赖分析，
-   *   基于子任务的输入/输出与语义关系构建 DAG，从而让无依赖关系
-   *   的任务能够真正并行执行。在此之前，本方法仅作为安全的串行降级方案。
+   * 这让 solve() 中「Promise.all(ready.map(...))」的并行基础设施
+   * 真正发挥作用——无依赖关系的任务可并发执行。
    */
   private analyzeDependencies(subtasks: SubTask[]): void {
-    // 串行降级实现：线性依赖链。详见上方方法注释。
-    for (let i = 1; i < subtasks.length; i++) {
-      subtasks[i].dependsOn = [subtasks[i - 1].id];
+    // 启发式：基于 description 的数据流依赖检测
+    for (let i = 0; i < subtasks.length; i++) {
+      const deps: string[] = [];
+      for (let j = 0; j < subtasks.length; j++) {
+        if (i === j) continue;
+        // 任务 i 的描述引用了任务 j 的 id → i 依赖 j
+        if (subtasks[i].description.includes(subtasks[j].id)) {
+          deps.push(subtasks[j].id);
+        }
+      }
+      subtasks[i].dependsOn = deps;
     }
+    // 安全检查：检测循环依赖，若有则回退到线性链
+    if (this.hasCycle(subtasks)) {
+      logger.warn('检测到循环依赖，回退到线性依赖链', { module: 'MultiStepReasoning' });
+      for (let i = 1; i < subtasks.length; i++) {
+        subtasks[i].dependsOn = [subtasks[i - 1].id];
+      }
+      subtasks[0].dependsOn = [];
+    }
+  }
+
+  /**
+   * DFS 循环依赖检测：判断子任务依赖图是否存在环。
+   */
+  private hasCycle(subtasks: SubTask[]): boolean {
+    const depMap = new Map<string, string[]>();
+    for (const s of subtasks) {
+      depMap.set(s.id, s.dependsOn ?? []);
+    }
+    const WHITE = 0, GRAY = 1, BLACK = 2;
+    const color = new Map<string, number>();
+    for (const s of subtasks) color.set(s.id, WHITE);
+
+    const dfs = (id: string): boolean => {
+      color.set(id, GRAY);
+      const deps = depMap.get(id) ?? [];
+      for (const dep of deps) {
+        const c = color.get(dep);
+        if (c === GRAY) return true; // 回边 → 环
+        if (c === WHITE && dfs(dep)) return true;
+      }
+      color.set(id, BLACK);
+      return false;
+    };
+
+    for (const s of subtasks) {
+      if (color.get(s.id) === WHITE && dfs(s.id)) return true;
+    }
+    return false;
   }
 }
 

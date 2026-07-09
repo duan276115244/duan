@@ -20,7 +20,7 @@ import { logger } from './structured-logger.js';
 import { EventBus, Events } from './event-bus.js';
 import type { ToolRiskLevel } from './enhanced-loop-types.js';
 import { errMsg } from './utils.js';
-import type { ToolCategory, ToolDef } from './unified-tool-def.js';
+import { inferCategory, type ToolCategory, type ToolDef } from './unified-tool-def.js';
 import { atomicWriteJson } from './atomic-write.js';
 
 // ============ 类型定义 ============
@@ -115,6 +115,30 @@ const RISK_ORDER: Record<string, number> = {
 const CORE_TOOL_IDS = new Set(['file_read', 'shell_execute']);
 
 const DEFAULT_EXECUTION_TIMEOUT = 30_000;
+
+// Phase G1: 按工具类别(category)的默认超时 — 介于 per-name 覆盖和全局默认之间
+// 目的：让快速工具（read/memory/task）更快失败，让网络/UI 工具有足够时间
+// 解析优先级：调用方显式传入 > per-name 覆盖 > per-category 默认 > 全局 30s
+const CATEGORY_DEFAULT_TIMEOUTS: Record<string, number> = {
+  // 本地快速 I/O — 5-10s 足够（失败应快速暴露，不要拖到 30s）
+  memory: 5_000,         // 本地倒排索引检索，正常 <100ms
+  task: 5_000,            // plan/task 管理是纯逻辑操作
+  file: 10_000,           // 本地文件读写，正常 <1s（大文件除外，但 10s 已够 100MB）
+  nlu: 10_000,            // NLU 解析（本地），不应阻塞
+  // 中等耗时 — 15-30s
+  system: 15_000,         // 系统状态读取，含进程/注册表查询
+  skill: 15_000,          // 技能操作可能涉及 I/O
+  data: 30_000,           // 数据处理，方差大
+  code: 30_000,           // 代码执行可能含编译
+  // 网络/UI 类 — 60s（网络延迟 + UI 自动化）
+  web: 60_000,             // 浏览器/HTTP 请求，受网络延迟影响
+  desktop: 60_000,         // 屏幕截图/点击/键盘，UI 自动化有等待时间
+  communication: 60_000,   // 微信/邮件/飞书，含应用启动
+  // 长耗时创作类 — 120s（多数会被 per-name 覆盖到更长）
+  creative: 120_000,
+  // 兜底
+  other: 30_000,
+};
 
 // 长耗时工具超时覆盖：默认 30s 对视频生成/模型训练/长任务太短，按工具名(name)单独配置
 // key 为工具 name（UnifiedToolDef.name），value 为毫秒
@@ -333,9 +357,13 @@ export class ScalableToolRegistry {
     const startTime = Date.now();
     const memBefore = process.memoryUsage().heapUsed;
 
-    // 超时解析优先级：调用方显式传入 > 长耗时工具覆盖表 > 默认 30s
+    // 超时解析优先级（Phase G1 新增 per-category 层）：
+    //   调用方显式传入 > per-name 长耗时覆盖 > per-category 默认 > 全局 30s
+    // per-category 通过 tool.category 字段获取；若未设置则用 inferCategory(tool.name) 推断
+    const toolCategory = tool.category ?? inferCategory(tool.name);
     const effectiveTimeout = timeoutMs
       ?? LONG_RUNNING_TOOL_TIMEOUTS[tool.name]
+      ?? CATEGORY_DEFAULT_TIMEOUTS[toolCategory]
       ?? DEFAULT_EXECUTION_TIMEOUT;
 
     try {

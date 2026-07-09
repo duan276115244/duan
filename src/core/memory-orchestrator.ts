@@ -508,6 +508,23 @@ export interface SearchOptions {
   tier?: HermesMemoryTier;
 }
 
+/**
+ * recall() 返回的统一召回结果（Phase C1）
+ * 让调用方拿到延迟/命中/置信度，便于 Plan 阶段决策 + C2 指标埋点
+ */
+export interface RecallResult {
+  /** 检索到的记忆条目 */
+  entries: MemoryEntry[];
+  /** 本次 recall 总延迟（ms） */
+  latencyMs: number;
+  /** 命中条目数（entries.length） */
+  hitCount: number;
+  /** 召回置信度 0-1（基于命中数 / minResults，上限 1） */
+  recallScore: number;
+  /** 查询是否命中（hitCount > 0） */
+  hit: boolean;
+}
+
 export interface StoreOptions {
   type?: MemoryEntry['type'];
   tags?: string[];
@@ -843,6 +860,33 @@ export class MemoryOrchestrator {
     } finally {
       this._recordRetrievalLatency(Date.now() - t0);
     }
+  }
+
+  /**
+   * Phase C1: 统一召回门面 — 包装 search() 返回带延迟/命中/置信度的 RecallResult
+   *
+   * 设计目标：让 enhanced-agent-loop 的 Plan 阶段通过单一入口获取记忆，
+   * 调用方可从 RecallResult 提取 latencyMs/hit 记录 C2 指标（recall_latency / memory_hit_rate），
+   * 保持 MemoryOrchestrator 与 EvolutionMetrics 解耦（指标由调用方埋点）。
+   *
+   * @param query 查询文本
+   * @param options 同 SearchOptions（topK/minResults/useVector/tier 等）
+   * @returns RecallResult（entries + latencyMs + hitCount + recallScore + hit）
+   */
+  async recall(query: string, options?: SearchOptions): Promise<RecallResult> {
+    const t0 = Date.now();
+    const entries = await this.searchCore(query, options);
+    const latencyMs = Date.now() - t0;
+    this._recordRetrievalLatency(latencyMs);
+    const minResults = options?.minResults ?? 2;
+    const hitCount = entries.length;
+    return {
+      entries,
+      latencyMs,
+      hitCount,
+      recallScore: Math.min(1, hitCount / Math.max(1, minResults)),
+      hit: hitCount > 0,
+    };
   }
 
   private async searchCore(query: string, options?: SearchOptions): Promise<MemoryEntry[]> {

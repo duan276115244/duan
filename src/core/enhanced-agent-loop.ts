@@ -50,6 +50,7 @@ import type { PromptOrchestrator, PromptContext} from './prompt-orchestrator.js'
 import { inferIntent } from './prompt-orchestrator.js';
 import type { ContextManager, ContextMessage } from './context-manager.js';
 import type { GuardrailSystem } from './guardrail-system.js';
+import { EthicsReviewEngine, type EthicsReviewResult } from './ethics-review-engine.js';
 import { SmartToolSelector, TaskIntent } from './smart-tool-selector.js';
 import { CapabilityGapDetector } from './capability-gap-detector.js';
 import { ToolLearningSystem } from './tool-learning-system.js';
@@ -98,6 +99,8 @@ import { SelfHealingEngine } from './self-heal-engine.js';
 import { CognitiveEngine, type CognitiveDecision, type CognitiveFeatures } from './cognitive-engine.js';
 import { ConsciousnessSystem, type ConsciousnessState } from './consciousness-system.js';
 import { ContinuousEvolutionSystem } from './continuous-evolution-system.js';
+// P0 i18n: 自动检测用户语言并影响回复语言（zh-CN 默认不追加指令，en-US/ja-JP 追加回复语言指令）
+import { detectAndSetLocale, getRespondInstruction } from './i18n/index.js';
 import {
   type ErrorCategory,
   type ErrorCategory5,
@@ -112,7 +115,9 @@ import {
 export { normalizeToolCallArgsForHistory } from './enhanced-agent-loop-utils.js';
 import {
   type ExtendedThinkingContext,
+  type ThinkingPhaseEvent,
   runExtendedThinking,
+  runExtendedThinkingStream,
   decomposeProblem,
   identifyConstraints,
   generateSolutions,
@@ -265,6 +270,8 @@ export class EnhancedAgentLoop {
   private _currentBaseURL: string = '';
   /** 双层护栏系统 */
   private guardrailSystem: GuardrailSystem | null = null;
+  /** 伦理审查引擎 — 工具执行前对参数做规则化伦理审查 */
+  private ethicsReviewEngine: EthicsReviewEngine | null = null;
   /** 能力缺口检测器 — 工具失败时自动检测能力缺口并触发自我升级 */
   private capabilityGapDetector: CapabilityGapDetector;
   /** 工具失败学习系统 — 从失败中学习，生成经验教训注入提示 */
@@ -273,6 +280,38 @@ export class EnhancedAgentLoop {
   /** 注入护栏系统 */
   setGuardrailSystem(gs: GuardrailSystem): void {
     this.guardrailSystem = gs;
+  }
+
+  /** 注入伦理审查引擎 */
+  setEthicsReviewEngine(engine: EthicsReviewEngine): void {
+    this.ethicsReviewEngine = engine;
+  }
+
+  /**
+   * 伦理审查 — 工具执行前调用。失败安全：引擎未注入或自身异常时返回 null（放行）。
+   * @returns null 表示无需拦截；非 null 且 approved=false 时应阻止执行
+   */
+  private _runEthicsReview(toolName: string, // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    args: any): EthicsReviewResult | null {
+    if (!this.ethicsReviewEngine) return null;
+    try {
+      const result = this.ethicsReviewEngine.review({ toolName, args });
+      if (!result.approved) {
+        logger.warn('工具调用被伦理审查拒绝', {
+          toolName,
+          violations: result.violations.length,
+          maxSeverity: result.maxSeverity,
+        });
+      }
+      return result;
+    } catch (err: unknown) {
+      // 失败安全：审查自身异常不阻塞工具执行
+      logger.error('伦理审查异常，降级放行', {
+        toolName,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return null;
+    }
   }
 
   /** 统一的输出护栏检查 — 所有退出路径都应调用此方法 */
@@ -447,6 +486,53 @@ export class EnhancedAgentLoop {
   private _preflightPassed: boolean = false;
   private _preflightExpiry: number = 0;
   private static readonly PREFLIGHT_CACHE_TTL_MS = 5 * 60 * 1000; // 预检结果缓存 5 分钟
+  /** Phase G2: 预热是否已启动（防止重复触发） */
+  private _warmUpStarted: boolean = false;
+
+  /**
+   * Phase G2: 启动时预热 API 连接 — 后台发一个最小预检请求填充缓存
+   *
+   * 调用时机：bootstrap.ts 构造完 loop 并注入 modelLibrary 后立即调用
+   * 效果：用户第一次发消息时跳过预检（省 1-3s 首字符延迟）
+   *
+   * 特性：
+   * - fire-and-forget：不阻塞构造，不抛错（失败时静默降级到正常预检流程）
+   * - 幂等：重复调用只触发一次
+   * - 失败安全：网络错误/key 无效时仅清缓存，不影响主流程
+   */
+  async warmUpPreflight(): Promise<void> {
+    if (this._warmUpStarted) return;
+    this._warmUpStarted = true;
+
+    try {
+      const clientInfo = this.getClient();
+      if (!clientInfo) return; // 无可用 client，静默跳过
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+
+      // 最小预检请求：stream=true + max_tokens=1，只读首 chunk 确认连通
+      const stream = await clientInfo.client.chat.completions.create({
+        model: clientInfo.model,
+        messages: [{ role: 'user', content: 'hi' }],
+        max_tokens: 1,
+        stream: true,
+      }, { signal: controller.signal });
+
+      for await (const _chunk of stream) {
+        clearTimeout(timeout);
+        controller.abort();
+        break;
+      }
+
+      // 预检通过 — 填充缓存
+      this._preflightPassed = true;
+      this._preflightExpiry = Date.now() + EnhancedAgentLoop.PREFLIGHT_CACHE_TTL_MS;
+    } catch {
+      // 预热失败 — 清缓存，首次 run() 会重新预检
+      this._preflightPassed = false;
+    }
+  }
   /** P1-5: 当前 Thread/Turn ID — 用于工具执行时记录 Item */
   private _currentTurnId: string | null = null;
   /** P0-1: 上下文压缩熔断器恢复超时（毫秒）— 5 分钟后半开 */
@@ -484,7 +570,37 @@ export class EnhancedAgentLoop {
     } catch {}
     this.capabilityGapDetector = new CapabilityGapDetector([]);
     this.learningEngine = new LearningEngine();
-    this.reasoningEngine = new ReasoningEngine();
+    this.reasoningEngine = new ReasoningEngine({
+      llmReason: async (task, context, mode) => {
+        if (!this.modelLibrary) return null;
+        try {
+          const prompt = `你是推理引擎，使用「${mode}」推理模式分析以下任务，输出结构化推理结果。
+
+任务：${task}
+上下文：${context.length > 0 ? context.map((c, i) => `[${i + 1}] ${c}`).join('\n') : '（无）'}
+
+请返回 JSON：{"conclusion":"最终结论","steps":[{"step":1,"thought":"思考","action":"行动（可选）","observation":"观察（可选）","confidence":0.8,"justification":"理由"}],"confidence":0.8,"alternatives":["备选1"],"mode":"${mode}"}`;
+          const resp = await this.modelLibrary.call([{ role: 'user', content: prompt }], { maxTokens: 1500, temperature: 0.4 });
+          const raw = resp.content || '';
+          const jsonMatch = raw.match(/\{[\s\S]*\}/);
+          if (!jsonMatch) return null;
+          const parsed = JSON.parse(jsonMatch[0]);
+          return {
+            conclusion: String(parsed.conclusion || ''),
+            steps: Array.isArray(parsed.steps) ? parsed.steps.map((s: any, i: number) => ({
+              step: i + 1, thought: String(s.thought || ''),
+              action: s.action ? String(s.action) : undefined,
+              observation: s.observation ? String(s.observation) : undefined,
+              confidence: typeof s.confidence === 'number' ? s.confidence : 0.7,
+              justification: String(s.justification || ''),
+            })) : [],
+            confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.7,
+            alternatives: Array.isArray(parsed.alternatives) ? parsed.alternatives.map(String) : [],
+            mode,
+          };
+        } catch { return null; }
+      },
+    });
     this.operationLayer = new UnifiedOperationLayer();
     this.creativeSolver = new CreativeTaskSolver();
     this.emotionSystem = new EmotionInteractionSystem();
@@ -647,6 +763,51 @@ export class EnhancedAgentLoop {
       const entry = this.toolRegistry.get(toolName);
       if (!entry) return `工具 ${toolName} 不存在`;
       try { return await entry.definition.execute(args); } catch (e: any) { return `执行失败: ${e.message}`; }
+    }, {
+      // Part A: LLM 智能任务分解回调 — 复用 modelLibrary 将复杂目标分解为结构化步骤
+      llmDecompose: async (goal: string, entities?: Record<string, string>) => {
+        if (!this.modelLibrary) return [];
+        try {
+          const entityHint = entities && Object.keys(entities).length > 0
+            ? `\n已知实体：${JSON.stringify(entities)}`
+            : '';
+          const prompt = `你是一个任务分解专家。请将以下复杂目标分解为 2-6 个可执行的步骤，每步包含明确的描述和可选的工具名。${entityHint}
+
+目标：${goal}
+
+请返回 JSON 数组格式（不要包含其他文本）：
+[{"description":"步骤描述","toolName":"可选工具名","dependencies":["依赖的前置步骤序号，从1开始"]}]
+
+注意：
+- 每步描述要具体、可执行
+- dependencies 用步骤序号（1-based）表示前置依赖，无依赖则为空数组
+- 工具名从已有工具中选择，不确定则省略 toolName`;
+          const resp = await this.modelLibrary.call(
+            [{ role: 'user', content: prompt }],
+            { maxTokens: 2000, temperature: 0.3 },
+          );
+          const raw = resp.content || '';
+          // 容错解析：LLM 可能返回 markdown 包裹的 JSON
+          const jsonMatch = raw.match(/\[[\s\S]*\]/);
+          if (!jsonMatch) return [];
+          const parsed = JSON.parse(jsonMatch[0]);
+          if (!Array.isArray(parsed)) return [];
+          // 转换为 ExecutionStep 格式（dependencies 从 1-based 序号转为 step_N id）
+          return parsed.map((item: any, idx: number) => ({
+            id: `step_${idx + 1}`,
+            description: String(item.description || `步骤 ${idx + 1}`),
+            toolName: item.toolName ? String(item.toolName) : undefined,
+            status: 'pending' as const,
+            retryCount: 0,
+            dependencies: Array.isArray(item.dependencies)
+              ? item.dependencies.map((d: number) => `step_${d}`).filter((d: string) => d !== `step_${idx + 1}`)
+              : [],
+            estimatedDuration: 30000,
+          }));
+        } catch {
+          return []; // 失败时降级到规则路径
+        }
+      },
     });
     for (const tool of taskEngine.getToolDefinitions()) {
       this.toolRegistry.register(tool, 'moderate', 'serial');
@@ -1046,6 +1207,16 @@ export class EnhancedAgentLoop {
     // regression_rate (direct) — failed actions / total ratio
     const failedActions = executionLog.filter(e => !e.success).length;
     em.recordRuntimeValue('regression_rate', failedActions / totalActions, 'direct');
+
+    // Phase C2: 任务终止边界统一 flush 所有 delta 累加器 → 50 样本滚动窗口
+    // （含 on_time/quality/gap_probing + 新增 recall_latency/memory_hit_rate）
+    // 每个 delta 计数器读取后清零，作为本次任务的样本推入滚动窗口，
+    // 使 getRuntimeAverage / getRuntimeP95 返回有意义数值（原代码漏调 flush 导致恒为 0）。
+    try {
+      if (typeof em.flushRuntimeDeltas === 'function') {
+        em.flushRuntimeDeltas();
+      }
+    } catch { /* flush 失败不影响主流程 */ }
   }
 
   /**
@@ -2239,11 +2410,19 @@ export class EnhancedAgentLoop {
       const complexity = this._detectTaskComplexity(input);
       if (complexity.shouldTrigger) {
         yield { type: 'think', content: `🧠 检测到复杂任务（${complexity.reason}），自动进入 Extended Thinking...` };
-        const thinkingResult = await this._runExtendedThinking(input, complexity.depth);
-        if (thinkingResult) {
-          // 将思考结果注入上下文，帮助 LLM 做出更好的决策
+        // Phase D1: 流式推送每个思考阶段（前端可看到推理步骤逐步展开）
+        const phases: ThinkingPhaseEvent[] = [];
+        for await (const phase of this._runExtendedThinkingStream(input, complexity.depth)) {
+          phases.push(phase);
+          const phaseContent = `${phase.emoji} ${phase.title}\n${phase.body}`;
+          yield { type: 'think', content: phaseContent };
+        }
+        if (phases.length > 0) {
+          // 将完整思考结果注入上下文，帮助 LLM 做出更好的决策
+          const thinkingResult = phases
+            .map(p => `${p.emoji} ${p.title}\n${p.body}`)
+            .join('\n');
           context.push({ role: 'system', content: `[Extended Thinking]\n${thinkingResult}` });
-          yield { type: 'think', content: thinkingResult };
         }
       }
     }
@@ -2288,7 +2467,7 @@ export class EnhancedAgentLoop {
         // P0-4: 推理引擎接入 Plan 阶段 — 规划前先推理分析任务
         // 根据任务复杂度选择 CoT/ToT/ReAct 等推理模式，将分析结果注入规划上下文
         try {
-          const reasoningResult = this.reasoningEngine.think(
+          const reasoningResult = await this.reasoningEngine.think(
             input,
             context.map(m => typeof m.content === 'string' ? m.content : '').filter(Boolean).slice(-5),
           );
@@ -2478,7 +2657,9 @@ export class EnhancedAgentLoop {
         if (this._legacyReasoningEngine) {
           try {
             if (typeof this._legacyReasoningEngine.think === 'function') {
-              _reasoningResult = this._legacyReasoningEngine.think(input);
+              const r = this._legacyReasoningEngine.think(input);
+              // think() 可能是 async（ReasoningEngine 已升级为 LLM 优先），统一为 Promise 并容错
+              _reasoningResult = (r && typeof r.then === 'function') ? r.catch(() => null) : r;
             } else if (typeof this._legacyReasoningEngine.chainOfThought === 'function') {
               _reasoningResult = this._legacyReasoningEngine.chainOfThought(input);
             }
@@ -2686,6 +2867,14 @@ export class EnhancedAgentLoop {
     }
 
     const isSimpleChat = input.length < 10 && /^(你好|hi|hello|嗨|嗨喽|您好|在吗|在么|hey|测试|test|help|\?)?$/i.test(input.trim());
+
+    // P0 i18n: 检测用户语言，非 zh-CN 时追加回复语言指令到 system prompt
+    // 让 agent 自动用用户语言回复（英文输入→英文回复，日文输入→日文回复），对标主流 agent 多语言能力
+    detectAndSetLocale(input);
+    const respondInstruction = getRespondInstruction();
+    if (respondInstruction) {
+      enhancedSystemPrompt += `\n\n## 🌐 回复语言\n${respondInstruction}`;
+    }
 
     const state: AgentState = {
       messages: [
@@ -3058,7 +3247,10 @@ export class EnhancedAgentLoop {
       // LLM调用 (流式输出)
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 45000);
+        // 分阶段超时：阶段1 首字节 12s（服务器不响应快速失败，原 45s 导致降级链累计 99s+）
+        const firstByteTimeoutId = setTimeout(() => controller.abort(), 12000);
+        // 阶段2 整体 90s（stream 消费上限，保护长响应不被误杀）— 首字节后激活
+        let overallTimeoutId: NodeJS.Timeout | null = null;
 
         // 【关键优化】注入已执行操作摘要，避免LLM重复操作
         if (executionLog.length > 0 && state.turnCount > 1) {
@@ -3108,7 +3300,7 @@ export class EnhancedAgentLoop {
         // 【新模块增强】注入推理引擎分析（复杂任务，首轮触发）
         if (state.turnCount === 1 && input.length > 20) {
           try {
-            const reasoningResult = this.reasoningEngine.think(input, state.messages.map(m => typeof m.content === 'string' ? m.content : '').filter(Boolean).slice(-3));
+            const reasoningResult = await this.reasoningEngine.think(input, state.messages.map(m => typeof m.content === 'string' ? m.content : '').filter(Boolean).slice(-3));
             if (reasoningResult.confidence < 0.5 && reasoningResult.alternatives.length > 0) {
               state.messages.push({
                 role: 'system' as const,
@@ -3134,12 +3326,29 @@ export class EnhancedAgentLoop {
           description: t.function.description,
           parameters: t.function.parameters,
         }));
-        const selectedDefs = this.smartToolSelector.selectTools(taskIntent, toolDefs, {
-          maxTools: this.currentMaxTools,
-          includeFailed: false,
-          planHints,
-          recentContext: input,
-        });
+        // Phase D2: 走 LLM fallback 路径 — 高置信度走原 sync selectTools，
+        // 低置信度或 mixed 时调 LLM 从工具 schema 选 3 个（含 5min 缓存）
+        const llmCaller = async (prompt: string): Promise<string> => {
+          if (!this.modelLibrary) return '';
+          try {
+            const resp = await this.modelLibrary.call(
+              [{ role: 'user', content: prompt }],
+              { maxTokens: 300, temperature: 0 },
+            );
+            return resp.content || '';
+          } catch {
+            return '';
+          }
+        };
+        const selectedDefs = await this.smartToolSelector.selectToolsWithLLMFallback(
+          input, toolDefs, {
+            maxTools: this.currentMaxTools,
+            includeFailed: false,
+            planHints,
+            recentContext: input,
+            llmCaller,
+          },
+        );
         // 将选中的工具转回 OpenAI 格式
         const selectedTools = selectedDefs.map(t => ({
           type: 'function' as const,
@@ -3237,6 +3446,9 @@ export class EnhancedAgentLoop {
         const response = this.config.queryEngine
           ? await this.config.queryEngine.createWithRecovery(selectedClient, requestBase, { signal: controller.signal }, selectedModel)
           : await selectedClient.chat.completions.create(requestBase, { signal: controller.signal });
+        // 首字节到达（create 返回）：清除首字节超时，激活整体超时保护 stream 消费
+        clearTimeout(firstByteTimeoutId);
+        overallTimeoutId = setTimeout(() => controller.abort(), 90000);
 
         let currentContent = '';
         let toolCalls: Array<{ id: string; name: string; arguments: string }> = [];
@@ -3326,7 +3538,7 @@ export class EnhancedAgentLoop {
           if (choice?.finish_reason) finishReason = choice.finish_reason;
         }
         } // end of else (streaming) block
-        clearTimeout(timeoutId);
+        if (overallTimeoutId) clearTimeout(overallTimeoutId);
 
         // 生命周期钩子：LLM 响应后（Token 用量追踪 / 成本统计）
         if (this._lifecycleHooks) {
@@ -4075,7 +4287,7 @@ export class EnhancedAgentLoop {
         this._circuitBreaker?.recordFailure();
 
         const isTimeout = errorCategory === 'timeout';
-        const errorMsg = isTimeout ? 'API请求超时(45秒)，请重试' : (err.message || String(err));
+        const errorMsg = isTimeout ? 'API请求超时(首字节12秒/整体90秒)，请检查网络或切换供应商' : (err.message || String(err));
         yield { type: 'error', content: `⚠️ API调用错误: ${errorMsg}` };
 
         // 主动记忆注入：错误恢复阶段注入历史相似错误的修复方案
@@ -4386,7 +4598,7 @@ export class EnhancedAgentLoop {
               if (!fallbackClientInfo) continue;
 
               const controller = new AbortController();
-              const timeoutId = setTimeout(() => controller.abort(), 45000);
+              const timeoutId = setTimeout(() => controller.abort(), 12000);
               const fallbackTools = this.toolRegistry.getOpenAITools(input, this.currentMaxTools);
               const fallbackRequestBase: OpenAI.ChatCompletionCreateParamsStreaming = {
                 model: fallbackClientInfo.model,
@@ -4525,7 +4737,7 @@ export class EnhancedAgentLoop {
                 return { type: 'error', error: `连续 ${state.errorCount} 次错误且无可用降级客户端`, recoverable: false };
               }
               const controller = new AbortController();
-              const timeoutId = setTimeout(() => controller.abort(), 30000);
+              const timeoutId = setTimeout(() => controller.abort(), 12000);
               const fallbackStream = await fallbackClientInfo.client.chat.completions.create({
                 model: fallbackClientInfo.model,
                 messages: state.messages,
@@ -4560,7 +4772,7 @@ export class EnhancedAgentLoop {
           yield { type: 'think', content: '🔄 API连续失败，尝试无工具的纯文本请求兜底...' };
           try {
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 30000);
+            const timeoutId = setTimeout(() => controller.abort(), 12000);
             const fallbackStream = await selectedClient.chat.completions.create({
               model: selectedModel,
               messages: state.messages,
@@ -4702,6 +4914,14 @@ export class EnhancedAgentLoop {
 
           state.toolCallHistory.push({ name: tc.function.name, args: tc.function.arguments, timestamp: Date.now() });
 
+          // 伦理审查：工具执行前对参数做规则化审查（失败安全 — 引擎未注入时放行）
+          const ethicsResult = this._runEthicsReview(tc.function.name, toolArgs);
+          if (ethicsResult && !ethicsResult.approved) {
+            const blockMsg = `🛡️ 工具 ${tc.function.name} 被伦理审查拒绝: ${ethicsResult.reason}`;
+            events.push({ type: 'tool_result', content: blockMsg.substring(0, 300), toolName: tc.function.name });
+            return { tc, result: blockMsg, success: false, blocked: true };
+          }
+
           if (!entry) {
             return { tc, result: `未知工具: ${tc.function.name}`, success: false };
           }
@@ -4842,6 +5062,16 @@ export class EnhancedAgentLoop {
         }
 
         state.toolCallHistory.push({ name: tc.function.name, args: tc.function.arguments, timestamp: Date.now() });
+
+        // 伦理审查：工具执行前对参数做规则化审查（失败安全 — 引擎未注入时放行）
+        const ethicsResult = this._runEthicsReview(tc.function.name, toolArgs);
+        if (ethicsResult && !ethicsResult.approved) {
+          const blockMsg = `🛡️ 工具 ${tc.function.name} 被伦理审查拒绝: ${ethicsResult.reason}`;
+          events.push({ type: 'tool_result', content: blockMsg.substring(0, 300), toolName: tc.function.name });
+          toolResults.push({ role: 'tool', tool_call_id: tc.id, content: blockMsg });
+          executionLog.push({ tool: tc.function.name, result: blockMsg, success: false });
+          continue;
+        }
 
         if (!entry) {
           const msg = `未知工具: ${tc.function.name}`;
@@ -5124,6 +5354,12 @@ export class EnhancedAgentLoop {
   /**
    * P1-1: 带缓存的记忆检索 — 避免相同查询重复走完整检索管线
    *
+   * Phase C2 升级：缓存未命中时改走 recall() 统一门面（替代 search()），
+   * 从 RecallResult 提取 latencyMs / hit 记录 source='new' 运行时指标：
+   * - recall_latency (delta): 累加每次召回的延迟毫秒数；任务终止时 flushRuntimeDeltas 推入 50 样本滚动窗口
+   * - memory_hit_rate (delta): 命中记 1 否则记 0；滚动平均 = 任务级命中率
+   * 缓存命中时仍按 0 延迟 + 不计命中统计（避免重复计数污染）。
+   *
    * 缓存策略：
    * - key: query 前 100 字符 + topK（相同查询直接命中）
    * - TTL: 60 秒（平衡新鲜度和性能）
@@ -5140,9 +5376,24 @@ export class EnhancedAgentLoop {
       return cached.results;
     }
 
-    // 缓存未命中 — 执行检索
+    // 缓存未命中 — 走 recall() 统一门面（Phase C1）
     try {
-      const results = await this.memoryOrchestrator.search(query, { topK });
+      const recallFn = this.memoryOrchestrator.recall?.bind(this.memoryOrchestrator);
+      const useRecall = typeof recallFn === 'function';
+      let results: any[];
+      if (useRecall) {
+        const rr = await recallFn(query, { topK });
+        results = rr.entries;
+        // Phase C2: 记录运行时召回指标（delta 模式 — 任务终止时统一 flush）
+        const em = this._evolutionMetrics;
+        if (em && typeof em.recordRuntimeValue === 'function') {
+          em.recordRuntimeValue('recall_latency', rr.latencyMs ?? 0, 'delta');
+          em.recordRuntimeValue('memory_hit_rate', rr.hit ? 1 : 0, 'delta');
+        }
+      } else {
+        // 兼容回退：recall() 未注入时降级到 search()
+        results = await this.memoryOrchestrator.search(query, { topK });
+      }
 
       // 写入缓存（LRU 淘汰）
       if (this._memorySearchCache.size >= EnhancedAgentLoop.MEMORY_CACHE_MAX) {
@@ -5468,6 +5719,20 @@ export class EnhancedAgentLoop {
    */
   private async _runExtendedThinking(problem: string, depth: 'shallow' | 'medium' | 'deep'): Promise<string> {
     return runExtendedThinking(this._buildExtendedThinkingContext(), problem, depth);
+  }
+
+  /**
+   * Phase D1: 流式 Extended Thinking — 逐阶段 yield 思考事件
+   *
+   * 与 _runExtendedThinking 的关系：本方法是真正的流式入口（async generator），
+   * _runExtendedThinking 保留为兼容包装（消费本流并 join 成字符串）。
+   * 主循环在 Execute 前调用本方法，让前端可以看到推理步骤逐步展开。
+   */
+  private async *_runExtendedThinkingStream(
+    problem: string,
+    depth: 'shallow' | 'medium' | 'deep',
+  ): AsyncGenerator<ThinkingPhaseEvent, void, void> {
+    yield* runExtendedThinkingStream(this._buildExtendedThinkingContext(), problem, depth);
   }
 
   /** 问题分解 — 转发 */

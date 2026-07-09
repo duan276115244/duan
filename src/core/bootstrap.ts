@@ -148,6 +148,7 @@ import { ToolMaskingEngine } from './tool-masking.js';
 import { ToolOrchestrationEngine } from './tool-orchestration-engine.js';
 // P1-2: 多步推理框架
 import { MultiStepReasoningFramework } from './multi-step-reasoning.js';
+import { IntelligentErrorRecovery } from './intelligent-error-recovery.js';
 import { SessionMemoryReplay } from './session-memory-replay.js';
 
 // ===== Phase 3: 全能多模态 =====
@@ -195,6 +196,9 @@ import { StructuredOutputParser } from './structured-output-parser.js';
 
 // ===== Phase 8: 路线图P0/P1/P2深度实现 =====
 import { ApprovalGate } from './approval-gate.js';
+import { EthicsReviewEngine } from './ethics-review-engine.js';
+import { CodeKnowledgeGraph } from './code-knowledge-graph.js';
+import { SotaBenchmarkScheduler } from './sota-benchmark-scheduler.js';
 import { SelfHealingPipeline } from './self-healing-pipeline.js';
 import { ConsistencyGuard } from './consistency-guard.js';
 import { AgentConfig } from './agent-config.js';
@@ -419,6 +423,9 @@ export interface CoreModules {
 
   // Phase 8
   approvalGate: ApprovalGate;
+  ethicsReviewEngine: EthicsReviewEngine;
+  codeKnowledgeGraph: CodeKnowledgeGraph;
+  sotaBenchmarkScheduler: SotaBenchmarkScheduler;
   selfHealing: SelfHealingPipeline;
   consistencyGuard: ConsistencyGuard;
   agentConfig: AgentConfig;
@@ -534,7 +541,37 @@ ${ctxStr ? `对话上下文: "${ctxStr}"` : ''}
     },
   });
 
-  const reasoningEngine = new ReasoningEngine();
+  const reasoningEngine = new ReasoningEngine({
+    llmReason: async (task, context, mode) => {
+      if (!modelLibrary) return null;
+      try {
+        const prompt = `你是推理引擎，使用「${mode}」推理模式分析以下任务，输出结构化推理结果。
+
+任务：${task}
+上下文：${context.length > 0 ? context.map((c, i) => `[${i + 1}] ${c}`).join('\n') : '（无）'}
+
+请返回 JSON：{"conclusion":"最终结论","steps":[{"step":1,"thought":"思考","action":"行动（可选）","observation":"观察（可选）","confidence":0.8,"justification":"理由"}],"confidence":0.8,"alternatives":["备选1"],"mode":"${mode}"}`;
+        const resp = await modelLibrary.call([{ role: 'user', content: prompt }], { maxTokens: 1500, temperature: 0.4 });
+        const raw = resp.content || '';
+        const jsonMatch = raw.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) return null;
+        const parsed = JSON.parse(jsonMatch[0]);
+        return {
+          conclusion: String(parsed.conclusion || ''),
+          steps: Array.isArray(parsed.steps) ? parsed.steps.map((s: any, i: number) => ({
+            step: i + 1, thought: String(s.thought || ''),
+            action: s.action ? String(s.action) : undefined,
+            observation: s.observation ? String(s.observation) : undefined,
+            confidence: typeof s.confidence === 'number' ? s.confidence : 0.7,
+            justification: String(s.justification || ''),
+          })) : [],
+          confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.7,
+          alternatives: Array.isArray(parsed.alternatives) ? parsed.alternatives.map(String) : [],
+          mode,
+        };
+      } catch { return null; }
+    },
+  });
   const performanceMetrics = new PerformanceMetricsSystem();
   // P0 修复 (Bug 3): 提前创建 EvolutionMetrics 单例并注入 SelfEvolutionEngine，
   // 避免 self-evolution-engine 内部 new 独立实例导致双实例隔离（19.9/100 根因之一）
@@ -917,6 +954,11 @@ ${ctxStr ? `对话上下文: "${ctxStr}"` : ''}
 
   // ===== Phase 8: 路线图P0/P1/P2深度实现 =====
   const approvalGate = new ApprovalGate();
+  const ethicsReviewEngine = new EthicsReviewEngine();
+  // #2 代码知识图谱：基于 TreeSitterAST 解析源码，sink 进 KnowledgeGraph
+  const codeKnowledgeGraph = new CodeKnowledgeGraph(knowledgeGraph, treeSitterAST);
+  // #3 SOTA 基准挑战：月度跑 benchmark + 比对 SOTA + 自动注入 roadmap
+  const sotaBenchmarkScheduler = new SotaBenchmarkScheduler(benchmarkFramework, optimizationRoadmap);
   const selfHealing = new SelfHealingPipeline();
   const consistencyGuard = new ConsistencyGuard();
   const agentConfig = new AgentConfig();
@@ -1375,7 +1417,7 @@ ${ctxStr ? `对话上下文: "${ctxStr}"` : ''}
     brain,
     projectConfig, modelRouter, outputParser,
     // Phase 8
-    approvalGate, selfHealing, consistencyGuard, agentConfig, contextSelector,
+    approvalGate, ethicsReviewEngine, codeKnowledgeGraph, sotaBenchmarkScheduler, selfHealing, consistencyGuard, agentConfig, contextSelector,
     // 三大核心功能模块
     learningEval, skillGen, userProfile, userPreferenceEngine,
     gepaEngine,
@@ -1977,6 +2019,9 @@ export function createAgentLoop(
     ['modelRouter',         () => modules.modelRouter.getToolDefinitions()],
     ['outputParser',        () => modules.outputParser.getToolDefinitions()],
     ['approvalGate',        () => modules.approvalGate.getToolDefinitions()],
+    ['ethicsReview',        () => modules.ethicsReviewEngine.getToolDefinitions()],
+    ['codeKnowledgeGraph',  () => modules.codeKnowledgeGraph.getToolDefinitions()],
+    ['sotaBenchmark',       () => modules.sotaBenchmarkScheduler.getToolDefinitions()],
     ['shadowGit',           () => modules.shadowGit.getToolDefinitions()],
     ['selfHealing',         () => modules.selfHealing.getToolDefinitions()],
     ['promptOptimizer',     () => modules.promptOptimizer.getToolDefinitions()],
@@ -2162,6 +2207,9 @@ export function createAgentLoop(
   // ==== 注入 GuardrailSystem 到 EnhancedAgentLoop ====
   loop.setGuardrailSystem(modules.guardrailSystem);
 
+  // ==== 注入 EthicsReviewEngine 到 EnhancedAgentLoop（工具执行前伦理审查）====
+  loop.setEthicsReviewEngine(modules.ethicsReviewEngine);
+
   // ==== P1-2: 连接反馈系统到反思引擎 — 建立 错误→反馈→反思→学习 闭环 ====
   try {
     loop.connectFeedbackToReflection(modules.feedbackSystem);
@@ -2227,10 +2275,37 @@ export function createAgentLoop(
   }
 
   // ==== P1-2: 注入 MultiStepReasoningFramework（多步推理框架） ====
+  // Part F: 构造带 LLM 诊断的 IntelligentErrorRecovery，注入多步推理框架
+  const intelligentErrorRecovery = new IntelligentErrorRecovery({
+    llmDiagnose: async (error) => {
+      if (!modelLibrary) return null;
+      try {
+        const prompt = `你是错误恢复诊断专家。分析以下错误，给出根因和恢复建议。
+
+错误类型：${error.type}
+错误消息：${error.message}
+错误来源：${error.source}
+上下文：${JSON.stringify(error.context || {}).substring(0, 500)}
+
+返回 JSON：{"rootCause":"根因分析","suggestedStrategy":"retry_with_backoff|degrade|alternative|rollback|skip|escalate","suggestedFix":"具体修复建议（可选）"}`;
+        const resp = await modelLibrary.call([{ role: 'user', content: prompt }], { maxTokens: 800, temperature: 0.3 });
+        const raw = resp.content || '';
+        const jsonMatch = raw.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) return null;
+        const parsed = JSON.parse(jsonMatch[0]);
+        const validStrategies = ['retry', 'retry_with_backoff', 'degrade', 'alternative', 'rollback', 'skip', 'escalate', 'compensate', 'cache_fallback', 'split', 'reconfigure', 'bulkhead', 'isolate'];
+        return {
+          rootCause: typeof parsed.rootCause === 'string' ? parsed.rootCause : undefined,
+          suggestedStrategy: validStrategies.includes(parsed.suggestedStrategy) ? parsed.suggestedStrategy : undefined,
+          suggestedFix: typeof parsed.suggestedFix === 'string' ? parsed.suggestedFix : undefined,
+        };
+      } catch { return null; }
+    },
+  });
   const multiStepReasoning = new MultiStepReasoningFramework(
     modules.reasoningEngine,
     undefined, // ReasoningChainVerifier 使用默认
-    undefined, // IntelligentErrorRecovery 使用默认
+    intelligentErrorRecovery, // Part F: 注入带 LLM 诊断的恢复器
   );
   try {
     // P1-2 真实修复：原先通过 (loop as unknown).multiStepReasoning = ... 注入到无处（死代码）
@@ -2264,6 +2339,11 @@ export function createAgentLoop(
   } catch (err: unknown) {
     logger.warn('最优捷径选择器初始化失败 — 路径推荐功能已禁用', { error: err instanceof Error ? err.message : String(err) });
   }
+
+  // Phase G2: 启动时预热 API 连接（fire-and-forget，不阻塞启动）
+  // 目的：用户首次发消息时跳过预检，省 1-3s 首字符延迟
+  // 失败时静默降级到 run() 内的正常预检流程，不影响主流程
+  loop.warmUpPreflight().catch(() => { /* 预热失败静默降级 */ });
 
   return loop;
 }

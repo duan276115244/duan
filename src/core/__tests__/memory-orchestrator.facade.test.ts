@@ -16,7 +16,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
-import { MemoryOrchestrator, type MemoryEntry } from '../memory-orchestrator.js';
+import { MemoryOrchestrator, type MemoryEntry, type RecallResult } from '../memory-orchestrator.js';
 import { HermesMemoryTier } from '../memory-types.js';
 
 describe('MemoryOrchestrator — Facade', () => {
@@ -325,6 +325,51 @@ describe('MemoryOrchestrator — Facade', () => {
     it('删除不存在的 ID 仍返回 true', async () => {
       const result = await mo.forget('nonexistent_id');
       expect(result).toBe(true);
+    });
+  });
+
+  // ============ recall() — Phase C1 统一召回门面 ============
+
+  describe('recall() — Phase C1', () => {
+    it('命中时返回 RecallResult，hit=true，hitCount>0', async () => {
+      await mo.store('TypeScript 高级类型教程', { importance: 7, tags: ['编程'] });
+      const result: RecallResult = await mo.recall('TypeScript', { topK: 5, useVector: false, minResults: 1 });
+      expect(result.hit).toBe(true);
+      expect(result.hitCount).toBeGreaterThan(0);
+      expect(result.entries.length).toBe(result.hitCount);
+      expect(result.recallScore).toBeGreaterThan(0);
+    });
+
+    it('空存储时 hit=false，hitCount=0，recallScore=0', async () => {
+      const result = await mo.recall('不存在的查询词', { topK: 5, useVector: false });
+      expect(result.hit).toBe(false);
+      expect(result.hitCount).toBe(0);
+      expect(result.recallScore).toBe(0);
+    });
+
+    it('latencyMs 为非负数', async () => {
+      await mo.store('可检索记忆', { importance: 7 });
+      const result = await mo.recall('可检索', { topK: 5, useVector: false, minResults: 1 });
+      expect(result.latencyMs).toBeGreaterThanOrEqual(0);
+    });
+
+    it('recallScore 上限为 1（hitCount >= minResults 时）', async () => {
+      // 存入 3 条，minResults=2 → hitCount>=2 → score=min(1, 3/2)=1
+      await mo.store('记忆甲 content', { importance: 7, tags: ['测试'] });
+      await mo.store('记忆乙 content', { importance: 7, tags: ['测试'] });
+      await mo.store('记忆丙 content', { importance: 7, tags: ['测试'] });
+      const result = await mo.recall('记忆', { topK: 5, useVector: false, minResults: 2 });
+      expect(result.recallScore).toBeLessThanOrEqual(1);
+      if (result.hitCount >= 2) {
+        expect(result.recallScore).toBe(1);
+      }
+    });
+
+    it('返回的 entries 与 search() 一致（recall 包装 searchCore）', async () => {
+      await mo.store('唯一记忆 XYZ', { importance: 8 });
+      const recallResult = await mo.recall('XYZ', { topK: 5, useVector: false, minResults: 1 });
+      const searchResult = await mo.search('XYZ', { topK: 5, useVector: false, minResults: 1 });
+      expect(recallResult.entries.length).toBe(searchResult.length);
     });
   });
 });

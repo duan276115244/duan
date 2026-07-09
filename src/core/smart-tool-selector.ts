@@ -454,6 +454,10 @@ export class SmartToolSelector {
   private static readonly FAIL_THRESHOLD = 3;
   /** 最近工具记录上限 */
   private static readonly RECENT_TOOLS_LIMIT = 20;
+  /** Phase D2: LLM 工具选择结果缓存 TTL（5 分钟，避免相同查询重复调用 LLM） */
+  private static readonly LLM_CACHE_TTL_MS = 5 * 60 * 1000;
+  /** Phase D2: LLM 工具选择缓存 — key=query+tools签名 hash, value={toolNames, timestamp} */
+  private _llmSelectionCache: Map<string, { toolNames: string[]; timestamp: number }> = new Map();
 
   constructor() {
     // P1-3: 初始化语义匹配引擎
@@ -816,6 +820,218 @@ export class SmartToolSelector {
     return bestIntent;
   }
 
+  /**
+   * Phase D2: 带置信度的意图推断
+   *
+   * 置信度口径：
+   * - bestScore 归一化到 [0,1]，阈值 3.0（约 1 个关键词 token+substring 命中：2*1+1*1=3）
+   * - 当 secondBest/bestScore > 0.85 强制 mixed 时，置信度按 secondBest/bestScore 反比衰减
+   * - bestScore=0（无任何匹配）→ confidence=0，intent='mixed'
+   *
+   * 用于触发 LLM fallback：confidence < 0.5 OR intent='mixed' 时改走 selectToolsWithLLMFallback
+   */
+  inferIntentWithConfidence(userInput: string): { intent: TaskIntent; confidence: number } {
+    if (!userInput || userInput.trim().length === 0) {
+      return { intent: 'mixed', confidence: 0 };
+    }
+
+    const tokens = tokenize(userInput);
+    const inputLower = userInput.toLowerCase();
+
+    const scores: Record<TaskIntent, number> = {
+      code: 0, browse: 0, desktop: 0, search: 0, file: 0, chat: 0, self_modify: 0, mixed: 0,
+    };
+
+    for (const [intent, config] of Object.entries(INTENT_KEYWORDS)) {
+      let score = 0;
+      for (const keyword of config.keywords) {
+        if (tokens.includes(keyword)) score += 2.0 * config.weight;
+        if (inputLower.includes(keyword.toLowerCase())) score += 1.0 * config.weight;
+      }
+      scores[intent as TaskIntent] = score;
+    }
+
+    let bestIntent: TaskIntent = 'chat';
+    let bestScore = 0;
+    for (const [intent, score] of Object.entries(scores)) {
+      if (score > bestScore) {
+        bestScore = score;
+        bestIntent = intent as TaskIntent;
+      }
+    }
+
+    const secondBest = Object.values(scores)
+      .filter(s => s !== bestScore)
+      .sort((a, b) => b - a)[0] ?? 0;
+
+    // 无匹配 → mixed + 0 置信度
+    if (bestScore === 0) {
+      return { intent: 'mixed', confidence: 0 };
+    }
+
+    // 多意图接近 → mixed，置信度按 secondBest/bestScore 衰减（0.85→0.15，1.0→0）
+    if (secondBest > 0 && secondBest / bestScore > 0.85) {
+      const ratio = secondBest / bestScore;
+      return { intent: 'mixed', confidence: Math.max(0, 1 - ratio) };
+    }
+
+    // 单一意图清晰：归一化 bestScore 到 [0,1]，阈值 3.0（1 个 token+substring 关键词命中）
+    const confidence = Math.min(1, bestScore / 3.0);
+    return { intent: bestIntent, confidence };
+  }
+
+  /**
+   * Phase D2: 工具选择 LLM fallback
+   *
+   * 流程：
+   * 1. inferIntentWithConfidence → 高置信度（≥ minConfidence）且非 mixed → 走原 sync selectTools（快路径）
+   * 2. 低置信度或 mixed + 提供了 llmCaller → 调 LLM 从工具 schema 选 3 个（慢路径，含 5min 缓存）
+   * 3. LLM 失败或未提供 llmCaller → 走 selectTools('mixed', ...)（兼容回退）
+   *
+   * 缓存策略：
+   * - key: userInput + 可用工具名签名 的 hash
+   * - TTL: 5 分钟
+   * - 命中缓存时跳过 LLM 调用，但仍走 failedTools 过滤
+   *
+   * @param userInput 用户原始输入
+   * @param allTools 全量可用工具
+   * @param options 含 llmCaller（可选，签名 (prompt) => Promise<string>）+ minConfidence（默认 0.5）+ 原 SelectToolsOptions
+   */
+  async selectToolsWithLLMFallback(
+    userInput: string,
+    allTools: ToolDefinition[],
+    options?: SelectToolsOptions & {
+      llmCaller?: (prompt: string) => Promise<string>;
+      minConfidence?: number;
+    },
+  ): Promise<ToolDefinition[]> {
+    const minConfidence = options?.minConfidence ?? 0.5;
+    const { intent, confidence } = this.inferIntentWithConfidence(userInput);
+
+    // 快路径：高置信度 + 非 mixed
+    if (confidence >= minConfidence && intent !== 'mixed') {
+      return this.selectTools(intent, allTools, options);
+    }
+
+    // 慢路径：LLM fallback
+    if (options?.llmCaller) {
+      try {
+        const llmToolNames = await this._selectByLLM(userInput, allTools, options.llmCaller);
+        if (llmToolNames.length > 0) {
+          const toolMap = new Map(allTools.map(t => [t.name, t]));
+          const selected = llmToolNames
+            .map(name => toolMap.get(name))
+            .filter((t): t is ToolDefinition => !!t);
+          if (selected.length > 0) {
+            return this._applyLLMSelectionFilters(selected, allTools, options);
+          }
+        }
+      } catch {
+        // LLM 失败 → 兼容回退到 mixed
+      }
+    }
+
+    // 兼容回退：mixed intent（全类别可用）
+    return this.selectTools('mixed', allTools, options);
+  }
+
+  /**
+   * Phase D2: LLM 工具选择（含 5 分钟缓存）
+   */
+  private async _selectByLLM(
+    userInput: string,
+    allTools: ToolDefinition[],
+    llmCaller: (prompt: string) => Promise<string>,
+  ): Promise<string[]> {
+    const cacheKey = this._hashQuery(userInput, allTools);
+    const cached = this._llmSelectionCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < SmartToolSelector.LLM_CACHE_TTL_MS) {
+      return cached.toolNames;
+    }
+
+    // 紧凑 schema（限制 30 个工具，描述截断 80 字符控制 prompt 大小）
+    const toolsForLLM = allTools.slice(0, 30).map(t => ({
+      name: t.name,
+      description: (t.description || '').slice(0, 80),
+    }));
+
+    const prompt = `你是工具选择助手。从以下工具中选出 3 个最适合处理用户任务的工具，按相关度排序。
+
+用户任务: ${userInput.slice(0, 200)}
+
+可用工具:
+${JSON.stringify(toolsForLLM, null, 2)}
+
+只返回 JSON，格式: {"tools": ["tool1", "tool2", "tool3"], "reason": "简要说明"}
+不要包含其他文字。`;
+
+    const raw = await llmCaller(prompt);
+    const parsed = this._parseLLMToolResponse(raw, allTools);
+
+    this._llmSelectionCache.set(cacheKey, {
+      toolNames: parsed,
+      timestamp: Date.now(),
+    });
+
+    return parsed;
+  }
+
+  /** 安全解析 LLM 返回的 JSON（容错 markdown 围栏 + 字段校验） */
+  private _parseLLMToolResponse(raw: string, allTools: ToolDefinition[]): string[] {
+    if (!raw || typeof raw !== 'string') return [];
+    // 提取第一个 JSON 对象（容错 ```json ... ``` 围栏）
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return [];
+    try {
+      const parsed = JSON.parse(jsonMatch[0]);
+      const tools = Array.isArray(parsed.tools) ? parsed.tools : [];
+      const validNames = new Set(allTools.map(t => t.name));
+      return tools.filter((t: unknown): t is string =>
+        typeof t === 'string' && validNames.has(t));
+    } catch {
+      return [];
+    }
+  }
+
+  /** query + 可用工具名签名的简单 hash（djb2 变体） */
+  private _hashQuery(input: string, allTools: ToolDefinition[]): string {
+    const toolSig = allTools.map(t => t.name).sort().join(',');
+    const s = input + '|' + toolSig;
+    let h = 5381;
+    for (let i = 0; i < s.length; i++) {
+      h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+    }
+    return String(h);
+  }
+
+  /**
+   * Phase D2: 对 LLM 选出的工具应用 failedTools 过滤 + 必备工具注入
+   *
+   * LLM 已决定工具集，不再走 essentialsByIntent/排序逻辑（信任 LLM 顺序），
+   * 但仍需：a) 排除连续失败的工具；b) 始终包含 'complete' 工具（终止信号）
+   */
+  private _applyLLMSelectionFilters(
+    selected: ToolDefinition[],
+    allTools: ToolDefinition[],
+    options?: SelectToolsOptions,
+  ): ToolDefinition[] {
+    const includeFailed = options?.includeFailed ?? false;
+    let filtered = selected;
+    if (!includeFailed) {
+      filtered = filtered.filter(t => {
+        const failCount = this.failedTools.get(t.name) ?? 0;
+        return failCount < SmartToolSelector.FAIL_THRESHOLD;
+      });
+    }
+    // 始终注入 'complete' 工具（若存在且未包含）
+    const hasComplete = filtered.some(t => t.name === 'complete');
+    if (!hasComplete) {
+      const complete = allTools.find(t => t.name === 'complete');
+      if (complete) filtered.push(complete);
+    }
+    return filtered;
+  }
+
   // ========== 辅助方法 ==========
 
   /**
@@ -934,5 +1150,6 @@ export class SmartToolSelector {
   reset(): void {
     this.failedTools.clear();
     this.recentTools = [];
+    this._llmSelectionCache.clear();
   }
 }

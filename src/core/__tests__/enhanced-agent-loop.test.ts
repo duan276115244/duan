@@ -12,7 +12,7 @@
  * 通过 inject* 方法注入 mock 依赖，验证字段赋值和统计同步逻辑。
  * 不调用 run()（需要 LLM），仅测试接入点的副作用。
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { EnhancedAgentLoop } from '../enhanced-agent-loop.js';
 import { UnifiedToolFramework } from '../unified-tool-framework.js';
 import { ToolConsolidation } from '../tool-consolidation.js';
@@ -304,6 +304,102 @@ describe('P0-5: EnhancedAgentLoop 主循环接入点', () => {
       expect((loop as unknown)._toolConsolidation).toBe(tc);
       expect((loop as unknown)._unifiedToolFramework).toBe(fw);
       expect((loop as unknown)._selfEvolve).toBe(se);
+    });
+  });
+
+  // ============ Phase G2: 连接预热 (warmUpPreflight) ============
+
+  describe('Phase G2: warmUpPreflight 连接预热', () => {
+    /** 生成一个 mock OpenAI 客户端，chat.completions.create 返回 async iterable */
+    function makeMockClient(chunks: Array<{ choices: Array<{ delta: { content?: string } }> }> = [{ choices: [{ delta: { content: 'h' } }] }]) {
+      const create = vi.fn(async function* () {
+        for (const c of chunks) yield c;
+      });
+      return {
+        client: { chat: { completions: { create } } },
+        create,
+        model: 'test-model',
+      };
+    }
+
+    /** 重置预热状态 + 注入 mock getClient */
+    function setupClient(mockReturn: { client: unknown; model: string } | null) {
+      (loop as unknown)._warmUpStarted = false;
+      (loop as unknown)._preflightPassed = false;
+      (loop as unknown)._preflightExpiry = 0;
+      (loop as unknown).getClient = () => mockReturn;
+    }
+
+    it('成功预热后填充缓存 (_preflightPassed=true 且 _preflightExpiry 在未来)', async () => {
+      const mock = makeMockClient();
+      setupClient({ client: mock.client, model: mock.model });
+
+      await loop.warmUpPreflight();
+
+      expect((loop as unknown)._preflightPassed).toBe(true);
+      expect((loop as unknown)._preflightExpiry).toBeGreaterThan(Date.now());
+      expect(mock.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('幂等：重复调用只触发一次真实请求', async () => {
+      const mock = makeMockClient();
+      setupClient({ client: mock.client, model: mock.model });
+
+      await loop.warmUpPreflight();
+      await loop.warmUpPreflight(); // 第二次应被 _warmUpStarted 拦截
+      await loop.warmUpPreflight(); // 第三次
+
+      expect(mock.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('失败安全：客户端抛错时不向上抛出且清空缓存', async () => {
+      const create = vi.fn(async function* () {
+        throw new Error('network timeout');
+        // eslint-disable-next-line no-unreachable
+        yield { choices: [{ delta: {} }] }; // 满足 require-yield（运行时不可达）
+      });
+      const mockClient = { chat: { completions: { create } } };
+      setupClient({ client: mockClient, model: 'test' });
+
+      // 不应抛出
+      await expect(loop.warmUpPreflight()).resolves.toBeUndefined();
+      expect((loop as unknown)._preflightPassed).toBe(false);
+    });
+
+    it('契约：首 chunk 即胜 — break 后生成器后续 throw 不影响成功判定', async () => {
+      // warmUpPreflight 收到首 chunk 后立即 break；break 会调 generator.return()
+      // 使 yield 之后的代码（含 throw）不再执行 → 预检判成功
+      // 这是有意设计：连通性预检只关心"能收到字节"，不关心流是否完整
+      const create = vi.fn(async function* () {
+        yield { choices: [{ delta: { content: 'h' } }] };
+        // 这行不会执行（break 已触发 return），但即使写了也不应改变成功判定
+        throw new Error('should-not-reach');
+      });
+      const mockClient = { chat: { completions: { create } } };
+      setupClient({ client: mockClient, model: 'test' });
+
+      await expect(loop.warmUpPreflight()).resolves.toBeUndefined();
+      expect((loop as unknown)._preflightPassed).toBe(true);
+    });
+
+    it('无可用 client 时静默跳过（不抛错、不填缓存）', async () => {
+      setupClient(null);
+
+      await expect(loop.warmUpPreflight()).resolves.toBeUndefined();
+      expect((loop as unknown)._preflightPassed).toBe(false);
+    });
+
+    it('预热后 run() 的预检缓存可被读取（_preflightPassed && _preflightExpiry>now）', async () => {
+      const mock = makeMockClient();
+      setupClient({ client: mock.client, model: mock.model });
+
+      await loop.warmUpPreflight();
+
+      // 模拟 run() 内部的预检缓存判断逻辑
+      const preflightCached =
+        (loop as unknown)._preflightPassed &&
+        Date.now() < (loop as unknown)._preflightExpiry;
+      expect(preflightCached).toBe(true);
     });
   });
 });

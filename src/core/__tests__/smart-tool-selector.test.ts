@@ -250,4 +250,185 @@ describe('SmartToolSelector', () => {
       expect(filtered.map(t => t.name)).toContain('browser_operate');
     });
   });
+
+  // ============ Phase D2: LLM fallback 工具选择 ============
+
+  describe('Phase D2: inferIntentWithConfidence + selectToolsWithLLMFallback', () => {
+    function buildAllTools(names: string[]): ToolDefinition[] {
+      return names.map(name => ({
+        name,
+        description: `${name} tool for ${name.split('_').join(' ')}`,
+        parameters: {},
+      }));
+    }
+
+    const KEY_TOOL_NAMES = [
+      'file_read', 'file_write', 'browser_operate', 'web_search', 'web_fetch',
+      'screen_capture', 'screen_click', 'app_smart',
+      'code_execute', 'shell_execute', 'memory_search', 'memory_store',
+      'create_plan', 'complete', 'self_read', 'self_evolve',
+    ];
+
+    // ---- inferIntentWithConfidence ----
+
+    describe('inferIntentWithConfidence', () => {
+      it('清晰 code 意图 → 高置信度', () => {
+        // '写代码' + 'bug' 双关键词命中 → 高分
+        const { intent, confidence } = selector.inferIntentWithConfidence('写代码 修复 bug');
+        expect(intent).toBe('code');
+        expect(confidence).toBeGreaterThan(0.5);
+      });
+
+      it('清晰 desktop 意图（微信）→ 高置信度', () => {
+        // '微信' + '发消息' 双关键词命中
+        const { intent, confidence } = selector.inferIntentWithConfidence('打开微信 发消息');
+        expect(intent).toBe('desktop');
+        expect(confidence).toBeGreaterThan(0.5);
+      });
+
+      it('空输入 → mixed + 置信度 0', () => {
+        const { intent, confidence } = selector.inferIntentWithConfidence('');
+        expect(intent).toBe('mixed');
+        expect(confidence).toBe(0);
+      });
+
+      it('无任何关键词匹配 → mixed + 置信度 0', () => {
+        // 注意：必须避开所有关键词的子串（'and'/'then'/'cv'/'hi' 等）
+        const { intent, confidence } = selector.inferIntentWithConfidence('aaaa bbbb cccc dddd');
+        expect(intent).toBe('mixed');
+        expect(confidence).toBe(0);
+      });
+    });
+
+    // ---- selectToolsWithLLMFallback ----
+
+    describe('selectToolsWithLLMFallback', () => {
+      it('高置信度走快路径，不调 LLM', async () => {
+        let llmCallCount = 0;
+        const llmCaller = async (_prompt: string): Promise<string> => {
+          llmCallCount++;
+          return '{"tools": ["file_read"], "reason": "test"}';
+        };
+        // '写代码 修复 bug' → code 意图高置信度
+        const allTools = buildAllTools(KEY_TOOL_NAMES);
+        const result = await selector.selectToolsWithLLMFallback(
+          '写代码 修复 bug', allTools, { llmCaller, maxTools: 10 },
+        );
+        expect(llmCallCount).toBe(0); // 未调 LLM
+        expect(result.length).toBeGreaterThan(0);
+      });
+
+      it('低置信度 + LLM caller → 使用 LLM 结果', async () => {
+        // 无关键词匹配 → mixed + 0 置信度 → 触发 LLM fallback
+        const sel = new SmartToolSelector(); // 隔离：避免共享 selector 缓存污染
+        const llmCaller = async (): Promise<string> =>
+          JSON.stringify({ tools: ['browser_operate', 'web_search', 'complete'], reason: 'test' });
+        const allTools = buildAllTools(KEY_TOOL_NAMES);
+        const result = await sel.selectToolsWithLLMFallback(
+          'aaaa bbbb cccc dddd', allTools, { llmCaller, maxTools: 10 },
+        );
+        const names = result.map(t => t.name);
+        expect(names).toContain('browser_operate');
+        expect(names).toContain('web_search');
+        expect(names).toContain('complete');
+      });
+
+      it('低置信度 + 无 llmCaller → 回退到 mixed selectTools', async () => {
+        const sel = new SmartToolSelector(); // 隔离
+        const allTools = buildAllTools(KEY_TOOL_NAMES);
+        const result = await sel.selectToolsWithLLMFallback(
+          'aaaa bbbb cccc dddd', allTools, { maxTools: 30 },
+        );
+        // mixed intent 返回所有类别工具
+        expect(result.length).toBeGreaterThan(0);
+        expect(result.some(t => t.name === 'complete')).toBe(true);
+      });
+
+      it('LLM 返回无效 JSON → 回退到 mixed selectTools', async () => {
+        const sel = new SmartToolSelector(); // 隔离：避免缓存命中导致未真正调用 LLM
+        const llmCaller = async (): Promise<string> => 'not valid json at all';
+        const allTools = buildAllTools(KEY_TOOL_NAMES);
+        const result = await sel.selectToolsWithLLMFallback(
+          'aaaa bbbb cccc dddd', allTools, { llmCaller, maxTools: 10 },
+        );
+        expect(result.length).toBeGreaterThan(0); // 仍有回退结果
+      });
+
+      it('LLM 返回未知工具名 → 被过滤掉', async () => {
+        const sel = new SmartToolSelector(); // 隔离
+        const llmCaller = async (): Promise<string> =>
+          JSON.stringify({ tools: ['nonexistent_tool', 'browser_operate'], reason: 'test' });
+        const allTools = buildAllTools(KEY_TOOL_NAMES);
+        const result = await sel.selectToolsWithLLMFallback(
+          'aaaa bbbb cccc dddd', allTools, { llmCaller, maxTools: 10 },
+        );
+        const names = result.map(t => t.name);
+        expect(names).not.toContain('nonexistent_tool');
+        expect(names).toContain('browser_operate');
+      });
+
+      it('缓存命中：第二次调用不调 LLM', async () => {
+        const sel = new SmartToolSelector();
+        let llmCallCount = 0;
+        const llmCaller = async (): Promise<string> => {
+          llmCallCount++;
+          return JSON.stringify({ tools: ['browser_operate', 'complete'], reason: 'test' });
+        };
+        const allTools = buildAllTools(KEY_TOOL_NAMES);
+        const query = 'aaaa bbbb cccc dddd unique-cache-marker-987654321';
+
+        await sel.selectToolsWithLLMFallback(query, allTools, { llmCaller, maxTools: 10 });
+        expect(llmCallCount).toBe(1);
+
+        // 第二次相同查询 → 缓存命中
+        await sel.selectToolsWithLLMFallback(query, allTools, { llmCaller, maxTools: 10 });
+        expect(llmCallCount).toBe(1); // 仍未增加
+      });
+
+      it('LLM 结果中的 failed 工具被排除（除非 includeFailed）', async () => {
+        const sel = new SmartToolSelector();
+        const llmCaller = async (): Promise<string> =>
+          JSON.stringify({ tools: ['browser_operate', 'web_search', 'complete'], reason: 'test' });
+        const allTools = buildAllTools(KEY_TOOL_NAMES);
+
+        // 累计 browser_operate 失败 3 次
+        sel.markFailed('browser_operate');
+        sel.markFailed('browser_operate');
+        sel.markFailed('browser_operate');
+
+        const result = await sel.selectToolsWithLLMFallback(
+          'aaaa bbbb cccc dddd', allTools, { llmCaller, maxTools: 10 },
+        );
+        expect(result.map(t => t.name)).not.toContain('browser_operate');
+
+        // includeFailed=true 仍保留（注意：缓存命中时仍会走 _applyLLMSelectionFilters 重新过滤）
+        const resultWithFailed = await sel.selectToolsWithLLMFallback(
+          'aaaa bbbb cccc dddd', allTools, { llmCaller, maxTools: 10, includeFailed: true },
+        );
+        expect(resultWithFailed.map(t => t.name)).toContain('browser_operate');
+      });
+
+      it('LLM 结果始终注入 complete 工具', async () => {
+        const sel = new SmartToolSelector(); // 隔离
+        const llmCaller = async (): Promise<string> =>
+          JSON.stringify({ tools: ['browser_operate', 'web_search'], reason: 'test' }); // 无 complete
+        const allTools = buildAllTools(KEY_TOOL_NAMES);
+        const result = await sel.selectToolsWithLLMFallback(
+          'aaaa bbbb cccc dddd inject-complete-xyz-555', allTools, { llmCaller, maxTools: 10 },
+        );
+        expect(result.some(t => t.name === 'complete')).toBe(true);
+      });
+
+      it('LLM 返回 markdown 围栏 JSON 也能正确解析', async () => {
+        const sel = new SmartToolSelector(); // 隔离
+        const llmCaller = async (): Promise<string> =>
+          '```json\n{"tools": ["browser_operate"], "reason": "test"}\n```';
+        const allTools = buildAllTools(KEY_TOOL_NAMES);
+        const result = await sel.selectToolsWithLLMFallback(
+          'aaaa bbbb cccc dddd markdown-fence-999', allTools, { llmCaller, maxTools: 10 },
+        );
+        expect(result.some(t => t.name === 'browser_operate')).toBe(true);
+      });
+    });
+  });
 });

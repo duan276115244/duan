@@ -132,12 +132,46 @@ interface ThoughtGraph {
   };
 }
 
+export interface ReasoningEngineConfig {
+  /** LLM 推理回调（可选）。传入任务+上下文+模式，返回完整推理结果。失败/返回 null 时降级到启发式。 */
+  llmReason?: (task: string, context: string[], mode: ReasoningMode) => Promise<ReasoningResult | null>;
+}
+
 export class ReasoningEngine {
   private history: ReasoningResult[] = [];
+  /** LLM 推理回调（可选，未配置时降级到启发式模式分发） */
+  private llmReason?: (task: string, context: string[], mode: ReasoningMode) => Promise<ReasoningResult | null>;
 
-  /** 执行推理 —— 根据任务和上下文自动选择推理模式 */
-  think(task: string, context: string[] = []): ReasoningResult {
+  constructor(config: ReasoningEngineConfig = {}) {
+    this.llmReason = config.llmReason;
+  }
+
+  /** 执行推理 —— 根据任务和上下文自动选择推理模式（LLM 优先，启发式降级） */
+  async think(task: string, context: string[] = []): Promise<ReasoningResult> {
     const mode = this.selectMode(task);
+    // LLM 优先路径：若已配置回调，先尝试 LLM 推理
+    if (this.llmReason) {
+      try {
+        const llmResult = await this.llmReason(task, context, mode);
+        if (llmResult && typeof llmResult.conclusion === 'string' && llmResult.conclusion.trim()) {
+          // 防御性填充：确保结构完整（LLM 返回可能缺字段）
+          const result: ReasoningResult = {
+            conclusion: llmResult.conclusion,
+            steps: Array.isArray(llmResult.steps) ? llmResult.steps : [],
+            confidence: typeof llmResult.confidence === 'number' ? llmResult.confidence : 0.7,
+            alternatives: Array.isArray(llmResult.alternatives) ? llmResult.alternatives : [],
+            mode: llmResult.mode || mode,
+            ...(llmResult.bestPath ? { bestPath: llmResult.bestPath } : {}),
+            ...(llmResult.thoughtGraph ? { thoughtGraph: llmResult.thoughtGraph } : {}),
+          };
+          this.history.push(result);
+          return result;
+        }
+      } catch {
+        // LLM 推理失败，降级到启发式
+      }
+    }
+    // 启发式降级（保留原有模式分发）
     switch (mode) {
       case 'ChainOfThought': return this.chainOfThought(task, context);
       case 'TreeOfThought': return this.treeOfThought(task, context);
@@ -557,9 +591,17 @@ export class ReasoningEngine {
 
   /** 综合多个思维节点（GoT 核心：跨分支合并） */
   private synthesizeThoughts(contents: string[], task: string): string {
-    // 提取各思维的关键点
-    const keyPoints = contents.map(c => c.substring(0, 30));
-    return `综合${contents.length}条分析路径的关键洞见（${keyPoints.join('；')}），形成针对"${task.substring(0, 30)}"的统一方案`;
+    if (contents.length === 0) return `针对"${task.substring(0, 30)}"无可综合的路径`;
+    if (contents.length === 1) return contents[0];
+    // 提取每条思维的首句（到第一个句号/换行）作为关键点，去重
+    const keyPoints: string[] = [];
+    const seen = new Set<string>();
+    for (const c of contents) {
+      const firstSentence = (c.split(/[。\n!?!?]/)[0] || c).substring(0, 60).trim();
+      const key = firstSentence.toLowerCase();
+      if (key && !seen.has(key)) { seen.add(key); keyPoints.push(firstSentence); }
+    }
+    return `综合 ${contents.length} 条分析路径的关键洞见：\n${keyPoints.map((p, i) => `${i + 1}. ${p}`).join('\n')}\n→ 针对"${task.substring(0, 30)}"形成统一方案`;
   }
 
   /** 聚合结论 */

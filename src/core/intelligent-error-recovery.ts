@@ -166,8 +166,15 @@ const DEFAULT_PATTERNS: ErrorPatternEntry[] = [
 
 // ============ IntelligentErrorRecovery 主类 ============
 
+export interface IntelligentErrorRecoveryConfig {
+  /** LLM 诊断回调（可选）。传入错误信息，返回根因分析+建议策略+建议修复。失败时降级到固定策略顺序。 */
+  llmDiagnose?: (error: ErrorInfo) => Promise<{ rootCause?: string; suggestedStrategy?: RecoveryStrategy; suggestedFix?: string } | null>;
+}
+
 export class IntelligentErrorRecovery {
   private log = logger.child({ module: 'IntelligentErrorRecovery' });
+  /** LLM 诊断回调（可选，未配置时使用固定策略顺序） */
+  private llmDiagnose?: (error: ErrorInfo) => Promise<{ rootCause?: string; suggestedStrategy?: RecoveryStrategy; suggestedFix?: string } | null>;
   /** 错误模式知识库 */
   private knowledgeBase: Map<string, ErrorPatternEntry> = new Map();
   /** 工具失败计数（用于熔断） */
@@ -191,7 +198,8 @@ export class IntelligentErrorRecovery {
     byStrategy: {} as Record<RecoveryStrategy, { used: number; succeeded: number }>,
   };
 
-  constructor() {
+  constructor(config: IntelligentErrorRecoveryConfig = {}) {
+    this.llmDiagnose = config.llmDiagnose;
     // 初始化知识库
     for (const entry of DEFAULT_PATTERNS) {
       this.knowledgeBase.set(entry.pattern, { ...entry });
@@ -291,6 +299,28 @@ export class IntelligentErrorRecovery {
     }
 
     const analysis = this.analyzeError(error);
+
+    // Part F: LLM 诊断优先 — 若已配置，分析根因并可能覆盖默认策略
+    if (this.llmDiagnose) {
+      try {
+        const diag = await this.llmDiagnose(error);
+        if (diag?.rootCause) {
+          sideEffects.push(`LLM 根因诊断：${diag.rootCause}`);
+        }
+        if (diag?.suggestedStrategy && diag.suggestedStrategy !== 'abort' && diag.suggestedStrategy !== analysis.strategy) {
+          this.log.info('LLM 诊断覆盖恢复策略', {
+            source: error.source,
+            defaultStrategy: analysis.strategy,
+            llmStrategy: diag.suggestedStrategy,
+            rootCause: diag.rootCause,
+          });
+          analysis.strategy = diag.suggestedStrategy;
+        }
+      } catch {
+        // 诊断失败，沿用默认分析策略
+      }
+    }
+
     this.stats.byType[analysis.type].total++;
     this.stats.byStrategy[analysis.strategy].used++;
 
