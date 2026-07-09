@@ -64,6 +64,8 @@ interface CapabilityReport {
   topRegressions: Array<{ metricId: string; metricName: string; delta: number }>;
   recommendations: string[];
   skipped: Array<{ metricId: string; reason: string }>;
+  // API 评估失败时返回的带错误对象（与成功 report 共用同一类型）
+  error?: string;
 }
 
 interface CapabilityMetricSnapshot {
@@ -145,7 +147,7 @@ function RadarChart({ dimensions }: { dimensions: CapabilityDimensionResult[] })
       ))}
       {/* 维度标签 */}
       {dimensions.map((d, i) => {
-        const [ex, ey] = axisEnd(i);
+        const [_ex, _ey] = axisEnd(i); // 轴端点坐标（标签定位用独立的 lx/ly，此处保留 axisEnd 调用以备调试）
         const labelR = r + 18;
         const rad = angle(i);
         const lx = cx + Math.cos(rad) * labelR;
@@ -242,7 +244,14 @@ export function CapabilityDashboardPage({ onBack }: { onBack?: () => void }) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ label: 'current' }),
         });
-        if (resp.ok) r = await resp.json();
+        if (resp.ok) {
+          r = await resp.json();
+        } else {
+          // HTTP 错误（如 503 capabilityAssessor 未注入、500 评估异常）
+          try { const e = await resp.json(); setError(e?.error || `评估请求失败 (HTTP ${resp.status})`); }
+          catch { setError(`评估请求失败 (HTTP ${resp.status})`); }
+          return;
+        }
       }
       if (r && !r.error) {
         setReport(r);
@@ -252,7 +261,13 @@ export function CapabilityDashboardPage({ onBack }: { onBack?: () => void }) {
         setError(r.error);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      const msg = err instanceof Error ? err.message : String(err);
+      // 浏览器 fetch 网络错误（如生产 Electron file:// origin 无法访问 /api，或后端未启动）
+      if (/Failed to fetch|NetworkError|fetch/i.test(msg)) {
+        setError('无法连接评估服务：请确认 Agent 后端服务已启动。桌面应用模式下若持续出现此错误，请重启应用。');
+      } else {
+        setError(msg);
+      }
     } finally {
       setAssessing(false);
     }

@@ -118,7 +118,7 @@ export const VoiceOutput = forwardRef<VoiceOutputHandle, VoiceOutputProps>(funct
           if (result?.success && result.audio) {
             // 将 base64 转为 blob 播放
             const byteChars = atob(result.audio);
-            const byteArrays: Uint8Array[] = [];
+            const byteArrays: BlobPart[] = [];
             for (let i = 0; i < byteChars.length; i += 8192) {
               const slice = byteChars.slice(i, i + 8192);
               const byteNumbers = new Array(slice.length);

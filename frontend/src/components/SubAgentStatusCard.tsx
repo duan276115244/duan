@@ -40,7 +40,8 @@ export function SubAgentStatusCard() {
     const handleEvent = (event: Record<string, unknown> | undefined) => {
       const type = (event?.type || event?.event) as string | undefined;
       const data = (event?.data || event) as Record<string, unknown> | undefined;
-      const taskId = data?.taskId as string | undefined;
+      if (!data) return; // 类型守卫：收窄 data 为非 undefined（taskId 依赖它）
+      const taskId = data.taskId as string | undefined;
       if (!taskId || !type) return;
 
       setAgents(prev => {

@@ -74,11 +74,24 @@ export function McpManagePage({ onBack }: { onBack?: () => void }) {
     setLoading(true);
     setError(null);
     try {
+      const api = (window as any).electronAPI;
+      const useIpc = !!api?.mcp?.listMarketplace;
+      // Electron 模式优先 IPC（生产 file:// origin 无法裸 fetch /api）；Web 模式回退 fetch
+      const installedP: Promise<{ success: boolean; plugins: McpPlugin[] }> = useIpc
+        ? api.mcp.listInstalled()
+        : apiGet<{ success: boolean; plugins: McpPlugin[] }>('/api/mcp/marketplace/installed');
+      const marketP: Promise<{ success: boolean; plugins: McpPlugin[] }> = useIpc
+        ? api.mcp.listMarketplace()
+        : apiGet<{ success: boolean; plugins: McpPlugin[] }>('/api/mcp/marketplace/list');
+      const pendingP: Promise<{ total: number; pending: PendingApproval[] }> = useIpc
+        ? api.mcp.listMarketplace().then(() => ({ total: 0, pending: [] as PendingApproval[] }))
+        : apiGet<{ total: number; pending: PendingApproval[] }>('/api/mcp/security/pending');
+      const statusP: Promise<SecurityStatus> = useIpc
+        ? Promise.resolve({})
+        : apiGet<SecurityStatus>('/api/mcp/security/status');
+
       const [installedResp, marketResp, pendingResp, statusResp] = await Promise.allSettled([
-        apiGet<{ success: boolean; plugins: McpPlugin[] }>('/api/mcp/marketplace/installed'),
-        apiGet<{ success: boolean; plugins: McpPlugin[] }>('/api/mcp/marketplace/list'),
-        apiGet<{ total: number; pending: PendingApproval[] }>('/api/mcp/security/pending'),
-        apiGet<SecurityStatus>('/api/mcp/security/status'),
+        installedP, marketP, pendingP, statusP,
       ]);
       if (installedResp.status === 'fulfilled') setInstalled(installedResp.value.plugins || []);
       if (marketResp.status === 'fulfilled') setMarketPlugins(marketResp.value.plugins || []);
@@ -96,7 +109,10 @@ export function McpManagePage({ onBack }: { onBack?: () => void }) {
   const handleInstall = async (id: string) => {
     setActionId(id);
     try {
-      const r = await apiPost(`/api/mcp/marketplace/install/${encodeURIComponent(id)}`);
+      const api = (window as any).electronAPI;
+      const r = api?.mcp?.installPlugin
+        ? await api.mcp.installPlugin(id)
+        : await apiPost(`/api/mcp/marketplace/install/${encodeURIComponent(id)}`);
       if (r.success) showToast(`✅ ${r.message || '安装成功'}`);
       else showToast(`❌ ${r.error || '安装失败'}`);
       await loadAll();
@@ -110,7 +126,10 @@ export function McpManagePage({ onBack }: { onBack?: () => void }) {
   const handleUninstall = async (id: string) => {
     setActionId(id);
     try {
-      const r = await apiPost(`/api/mcp/marketplace/uninstall/${encodeURIComponent(id)}`);
+      const api = (window as any).electronAPI;
+      const r = api?.mcp?.uninstallPlugin
+        ? await api.mcp.uninstallPlugin(id)
+        : await apiPost(`/api/mcp/marketplace/uninstall/${encodeURIComponent(id)}`);
       if (r.success) showToast(`✅ ${r.message || '卸载成功'}`);
       else showToast(`❌ ${r.error || '卸载失败'}`);
       await loadAll();

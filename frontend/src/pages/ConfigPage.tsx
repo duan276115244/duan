@@ -129,6 +129,8 @@ export function ConfigPage({ onBack }: { onBack?: () => void }) {
   const [selfImproveHistory, setSelfImproveHistory] = useState<any[]>([]);
   const [selfImproveBackups, setSelfImproveBackups] = useState<any[]>([]);
   const [selfImproveLoading, setSelfImproveLoading] = useState(false);
+  // ===== i18n 语种状态 =====
+  const [locale, setLocaleState] = useState<string>('zh-CN');
   // F2: 立即执行 evolve cycle 状态
   const [evolveRunning, setEvolveRunning] = useState(false);
   const [evolveResult, setEvolveResult] = useState<{ type: 'success' | 'error'; text: string; details?: string } | null>(null);
@@ -194,16 +196,30 @@ export function ConfigPage({ onBack }: { onBack?: () => void }) {
 
   useEffect(() => {
     loadSelfImproveStatus();
+    // 加载当前语种偏好
+    const api0 = (window as any).electronAPI;
+    if (api0?.i18n?.getLocale) {
+      api0.i18n.getLocale().then((r: any) => {
+        if (r?.success && r.locale) setLocaleState(r.locale);
+      }).catch(() => {});
+    }
   }, []);
 
   const handleToggleSelfImprove = async () => {
     const api = (window as any).electronAPI;
-    if (!api?.selfImprove) return;
+    if (!api?.selfImprove) {
+      setMessage('当前环境不支持自我改进（需 Electron 桌面端）');
+      clearMessageLater(4000);
+      return;
+    }
     const next = !selfImproveEnabled;
     const res = await api.selfImprove.setEnabled(next);
     if (res?.success) {
       setSelfImproveEnabled(next);
       setMessage(next ? '自我改进已启用 — Agent 可搜索网络并提议代码修改（每次修改需你批准）' : '自我改进已禁用');
+      clearMessageLater(4000);
+    } else {
+      setMessage(res?.error || '自我改进开关设置失败，请检查配置文件权限');
       clearMessageLater(4000);
     }
   };
@@ -889,6 +905,54 @@ export function ConfigPage({ onBack }: { onBack?: () => void }) {
             </div>
           </section>
         )}
+
+        {/* 语种设置 - 玻璃态卡片 */}
+        <section className="glass-effect" style={{ borderRadius: 16, padding: 20, marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+            <div style={{
+              width: 28, height: 28, borderRadius: 8,
+              background: 'linear-gradient(135deg, #06b6d4, #3b82f6)',
+              color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <Globe style={{ width: 14, height: 14 }} />
+            </div>
+            <h2 style={{ fontSize: 16, fontWeight: 600, color: '#e2e8f0', margin: 0 }}>语种设置</h2>
+            <span style={{ fontSize: 11, color: '#475569', marginLeft: 8 }}>Agent 回复语言偏好</span>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {[
+              { key: 'zh-CN', label: '中文' },
+              { key: 'en-US', label: 'English' },
+              { key: 'ja-JP', label: '日本語' },
+            ].map(l => (
+              <button
+                key={l.key}
+                onClick={async () => {
+                  const api = (window as any).electronAPI;
+                  if (!api?.i18n?.setLocale) return;
+                  const r = await api.i18n.setLocale(l.key);
+                  if (r?.success) {
+                    setLocaleState(l.key);
+                    setMessage(`语种已切换为 ${l.label}`);
+                    clearMessageLater(3000);
+                  }
+                }}
+                style={{
+                  padding: '8px 16px', borderRadius: 8, cursor: 'pointer', fontSize: 13,
+                  background: locale === l.key ? 'linear-gradient(135deg, #06b6d4, #3b82f6)' : 'rgba(255,255,255,.04)',
+                  color: locale === l.key ? '#fff' : '#94a3b8',
+                  border: locale === l.key ? 'none' : '1px solid rgba(255,255,255,.08)',
+                  fontWeight: locale === l.key ? 600 : 400,
+                }}
+              >
+                {l.label}
+              </button>
+            ))}
+          </div>
+          <p style={{ fontSize: 11, color: '#64748b', margin: '10px 0 0' }}>
+            注意：Agent 也会根据你的输入语言自动检测。此设置为偏好提示。
+          </p>
+        </section>
 
         {/* 自我改进 - 玻璃态卡片 */}
         <section className="glass-effect" style={{ borderRadius: 16, padding: 20, marginBottom: 16 }}>

@@ -138,7 +138,7 @@ export function VoiceSettingsPage({ onBack }: { onBack?: () => void }) {
       });
       if (result?.success && result.audio) {
         const byteChars = atob(result.audio);
-        const byteArrays: Uint8Array[] = [];
+        const byteArrays: BlobPart[] = [];
         for (let i = 0; i < byteChars.length; i += 8192) {
           const slice = byteChars.slice(i, i + 8192);
           const byteNumbers = new Array(slice.length);

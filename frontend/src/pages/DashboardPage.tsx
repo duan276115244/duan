@@ -127,10 +127,8 @@ export function DashboardPage({ onBack }: { onBack?: () => void }) {
       try {
         if (api?.dashboard?.remote) {
           const result = await api.dashboard.remote();
-          // 检查远程返回是否有真实数据（systemStats 中至少有对话数或消息数）
-          const ss = result?.systemStats;
-          const hasRealData = ss && (ss.totalConversations > 0 || ss.totalMessages > 0 || ss.totalToolCalls > 0 || ss.totalSkills > 0 || (ss.dailyActivity && ss.dailyActivity.length > 0));
-          if (result && (hasRealData || result.metrics || result.report)) {
+          // 放宽门控：只要 result 非 null 即采用（systemStats 在零活动时也有系统信息可展示）
+          if (result) {
             remoteOk = true;
             setMetrics(result.metrics || null);
             setReport(result.report || null);
@@ -163,6 +161,15 @@ export function DashboardPage({ onBack }: { onBack?: () => void }) {
           }
         } catch { /* ignore */ }
       }
+      // 额外拉取能力评估概览（即使零活动也能展示能力分）
+      try {
+        if (api?.capability?.report) {
+          const cap = await api.capability.report();
+          if (cap && cap.success !== false) {
+            setDashboardData((prev: any) => prev ? { ...prev, capability: cap } : { capability: cap });
+          }
+        }
+      } catch { /* 能力评估未就绪时忽略 */ }
       // 获取系统状态
       try {
         if (api?.system?.status) {
@@ -401,6 +408,35 @@ export function DashboardPage({ onBack }: { onBack?: () => void }) {
                   <p style={{ fontSize: 14, fontWeight: 600, color: '#e2e8f0', margin: 0 }}>{dashboardData.systemStats.memoryUsage}MB / {dashboardData.systemStats.configuredProviders}个</p>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* 能力评估概览 */}
+          {dashboardData?.capability && dashboardData.capability.success !== false && (
+            <div className="glass-effect" style={{ borderRadius: 12, padding: 16, marginBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <BrainCircuit style={{ width: 16, height: 16, color: '#06b6d4' }} />
+                  <span style={{ fontSize: 13, fontWeight: 600, color: '#e2e8f0' }}>能力评估概览</span>
+                </div>
+                <span style={{ fontSize: 20, fontWeight: 700, color: '#06b6d4' }}>
+                  {typeof dashboardData.capability.overallScore === 'number' ? dashboardData.capability.overallScore.toFixed(1) : '—'}
+                  <span style={{ fontSize: 11, color: '#475569', marginLeft: 2 }}>/ 100</span>
+                </span>
+              </div>
+              {Array.isArray(dashboardData.capability.dimensions) && dashboardData.capability.dimensions.length > 0 && (
+                <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(dashboardData.capability.dimensions.length, 5)}, 1fr)`, gap: 8 }}>
+                  {dashboardData.capability.dimensions.slice(0, 5).map((d: any) => (
+                    <div key={d.dimension} style={{ padding: '6px 8px', borderRadius: 8, background: 'rgba(255,255,255,.02)', border: '1px solid rgba(255,255,255,.04)' }}>
+                      <p style={{ fontSize: 10, color: '#475569', margin: 0 }}>{d.name || d.dimension}</p>
+                      <p style={{ fontSize: 13, fontWeight: 600, color: '#e2e8f0', margin: 0 }}>{typeof d.score === 'number' ? d.score.toFixed(1) : '—'}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {Array.isArray(dashboardData.capability.skipped) && dashboardData.capability.skipped.length > 0 && (
+                <p style={{ fontSize: 10, color: '#475569', margin: '8px 0 0' }}>{dashboardData.capability.skipped.length} 个指标因依赖未配置而跳过</p>
+              )}
             </div>
           )}
 

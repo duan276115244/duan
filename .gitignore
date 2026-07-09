@@ -80,6 +80,10 @@ lpt3
 段先生_自我介绍.html
 段先生*.html
 段先生*.md
+*.docx
+*.doc
+*.pdf
+*.pptx
 ARCHITECTURE_REFACTOR_PLAN.md
 COMPETITOR_RESEARCH_REPORT.md
 COMPREHENSIVE_AGENT_COMPARATIVE_RESEARCH.md
@@ -118,6 +122,10 @@ test-task*.json
 test-task*.js
 test_*.json
 test-write.txt
+
+# ===== self-evolve 自动备份文件（运行时产物，不入库）=====
+*.evolve.backup.*
+*.evolve.backup
 
 # ===== 开发者专用脚本（不出现在仓库中）=====
 scripts/encrypt-core.cjs

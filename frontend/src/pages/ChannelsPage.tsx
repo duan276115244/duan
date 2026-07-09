@@ -150,13 +150,27 @@ export function ChannelsPage({ onBack }: { onBack?: () => void }) {
 
   // 加载通道列表
   const loadChannels = useCallback(async () => {
-    if (!isElectron) return;
     try {
       setLoading(true);
-      const api = (window as any).electronAPI;
-      const result = await api.channel.list();
-      if (result?.success) {
-        setChannels(result.data || []);
+      if (isElectron) {
+        const api = (window as any).electronAPI;
+        const result = await api.channel.list();
+        if (result?.success) {
+          setChannels(result.data || []);
+        }
+      } else {
+        // Web 模式回退：直接调后端 API
+        const resp = await fetch('/api/channels');
+        if (resp.ok) {
+          const data = await resp.json();
+          // GET /api/channels 可能返回数组或 { channels: Record<string, Config> }
+          const list = Array.isArray(data)
+            ? data
+            : (data.channels
+              ? Object.entries(data.channels).map(([id, c]: [string, any]) => ({ id, ...c }))
+              : []);
+          setChannels(list);
+        }
       }
     } catch (err) {
       console.error('加载通道失败:', err);
@@ -167,11 +181,21 @@ export function ChannelsPage({ onBack }: { onBack?: () => void }) {
 
   // 加载模板
   useEffect(() => {
-    if (!isElectron) return;
-    const api = (window as any).electronAPI;
-    api.channel.templates().then((result: any) => {
-      if (result?.success) setTemplates(result.data || {});
-    }).catch(() => {});
+    if (isElectron) {
+      const api = (window as any).electronAPI;
+      api.channel.templates().then((result: any) => {
+        if (result?.success) setTemplates(result.data || {});
+      }).catch(() => {});
+    } else {
+      // Web 模式回退：GET /api/channels/templates
+      fetch('/api/channels/templates')
+        .then(r => r.json())
+        .then((data: any) => {
+          if (data?.success && data.data) setTemplates(data.data);
+          else if (data && !data.success) setTemplates({});
+        })
+        .catch(() => {});
+    }
   }, [isElectron]);
 
   useEffect(() => { loadChannels(); }, [loadChannels]);
@@ -183,17 +207,34 @@ export function ChannelsPage({ onBack }: { onBack?: () => void }) {
 
   // 保存通道
   const handleSave = useCallback(async (channel: ChannelConfig) => {
-    if (!isElectron) return;
     try {
-      const api = (window as any).electronAPI;
-      const result = await api.channel.save(channel);
-      if (result?.success) {
-        showMessage('success', `通道 ${channel.id} 保存成功`);
-        setShowAddModal(false);
-        setEditingChannel(null);
-        await loadChannels();
+      if (isElectron) {
+        const api = (window as any).electronAPI;
+        const result = await api.channel.save(channel);
+        if (result?.success) {
+          showMessage('success', `通道 ${channel.id} 保存成功`);
+          setShowAddModal(false);
+          setEditingChannel(null);
+          await loadChannels();
+        } else {
+          showMessage('error', result?.message || '保存失败');
+        }
       } else {
-        showMessage('error', result?.message || '保存失败');
+        // Web 模式回退：POST /api/channels
+        const resp = await fetch('/api/channels', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(channel),
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (data?.success || resp.ok) {
+          showMessage('success', `通道 ${channel.id} 保存成功`);
+          setShowAddModal(false);
+          setEditingChannel(null);
+          await loadChannels();
+        } else {
+          showMessage('error', data?.error || data?.message || '保存失败');
+        }
       }
     } catch (err: any) {
       showMessage('error', err.message);
@@ -202,16 +243,26 @@ export function ChannelsPage({ onBack }: { onBack?: () => void }) {
 
   // 删除通道
   const handleDelete = async (id: string) => {
-    if (!isElectron) return;
     if (!confirm(`确定删除通道 ${id} 吗？`)) return;
     try {
-      const api = (window as any).electronAPI;
-      const result = await api.channel.delete(id);
-      if (result?.success) {
-        showMessage('success', `通道 ${id} 已删除`);
-        await loadChannels();
+      if (isElectron) {
+        const api = (window as any).electronAPI;
+        const result = await api.channel.delete(id);
+        if (result?.success) {
+          showMessage('success', `通道 ${id} 已删除`);
+          await loadChannels();
+        } else {
+          showMessage('error', result?.message || '删除失败');
+        }
       } else {
-        showMessage('error', result?.message || '删除失败');
+        const resp = await fetch(`/api/channels/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        const data = await resp.json().catch(() => ({}));
+        if (data?.success || resp.ok) {
+          showMessage('success', `通道 ${id} 已删除`);
+          await loadChannels();
+        } else {
+          showMessage('error', data?.error || data?.message || '删除失败');
+        }
       }
     } catch (err: any) {
       showMessage('error', err.message);
@@ -220,14 +271,27 @@ export function ChannelsPage({ onBack }: { onBack?: () => void }) {
 
   // 测试通道
   const handleTest = async (channel: ChannelConfig) => {
-    if (!isElectron) return;
     try {
-      const api = (window as any).electronAPI;
-      const result = await api.channel.test(channel);
-      if (result?.success) {
-        showMessage('success', result.message);
+      if (isElectron) {
+        const api = (window as any).electronAPI;
+        const result = await api.channel.test(channel);
+        if (result?.success) {
+          showMessage('success', result.message);
+        } else {
+          showMessage('error', result?.message || '测试失败');
+        }
       } else {
-        showMessage('error', result?.message || '测试失败');
+        const resp = await fetch('/api/channels/test', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(channel),
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (data?.success || resp.ok) {
+          showMessage('success', data?.message || '测试成功');
+        } else {
+          showMessage('error', data?.error || data?.message || '测试失败');
+        }
       }
     } catch (err: any) {
       showMessage('error', err.message);
@@ -582,8 +646,6 @@ const ChannelModal = React.memo(function ChannelModal({ templates, editingChanne
   };
 
   const handleTest = async () => {
-    if (!isElectron) return;
-
     // P2-1 修复：测试前校验
     const validation = validateConfig();
     if (!validation.ok) {
@@ -593,13 +655,31 @@ const ChannelModal = React.memo(function ChannelModal({ templates, editingChanne
 
     setTesting(true);
     try {
-      const api = (window as any).electronAPI;
-      const result = await api.channel.test({ type: selectedType, ...config });
-      if (result?.success) {
-        alert('✅ ' + result.message);
+      const payload = { type: selectedType, ...config };
+      if (isElectron) {
+        const api = (window as any).electronAPI;
+        const result = await api.channel.test(payload);
+        if (result?.success) {
+          alert('✅ ' + result.message);
+        } else {
+          alert('❌ ' + (result?.message || '测试失败'));
+        }
       } else {
-        alert('❌ ' + (result?.message || '测试失败'));
+        // Web 模式回退：POST /api/channels/test
+        const resp = await fetch('/api/channels/test', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (data?.success || resp.ok) {
+          alert('✅ ' + (data?.message || '测试成功'));
+        } else {
+          alert('❌ ' + (data?.error || data?.message || '测试失败'));
+        }
       }
+    } catch (err: any) {
+      alert('❌ ' + (err.message || '测试异常'));
     } finally {
       setTesting(false);
     }

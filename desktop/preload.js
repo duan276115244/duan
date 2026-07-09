@@ -285,6 +285,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     evolutionHistory: () => ipcRenderer.invoke('self-improve:evolutionHistory'),
   },
 
+  // ===== i18n 语种管理 =====
+  i18n: {
+    getLocale: () => ipcRenderer.invoke('i18n:getLocale'),
+    setLocale: (locale) => ipcRenderer.invoke('i18n:setLocale', { locale }),
+  },
+
   // ===== Shell 工具（安全的外部链接打开）=====
   shell: {
     openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),

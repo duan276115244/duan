@@ -3216,6 +3216,35 @@ except Exception as e:
     }
   });
 
+  // ----- i18n 语种管理 -----
+  ipcMain.handle('i18n:getLocale', async () => {
+    try {
+      const duanConfig = loadDuanConfig();
+      return { success: true, locale: duanConfig.locale || 'zh-CN' };
+    } catch {
+      return { success: true, locale: 'zh-CN' };
+    }
+  });
+
+  ipcMain.handle('i18n:setLocale', async (_event, { locale }) => {
+    const valid = ['zh-CN', 'en-US', 'ja-JP'];
+    if (!valid.includes(locale)) return { success: false, error: '不支持的语种' };
+    try {
+      const duanConfigPath = path.join(os.homedir(), '.duan', 'config.json');
+      let existing = {};
+      if (fs.existsSync(duanConfigPath)) {
+        existing = JSON.parse(fs.readFileSync(duanConfigPath, 'utf-8'));
+      }
+      existing.locale = locale;
+      markConfigSelfWrite();
+      fs.writeFileSync(duanConfigPath, JSON.stringify(existing, null, 2), 'utf-8');
+      console.log(`[i18n] 语种已设置为: ${locale}`);
+      return { success: true, locale };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
   ipcMain.handle('config:save', async (_event, config) => {
     try {
       // ===== 合并 API Keys：新输入的 key + 已存在的 key =====
@@ -3618,6 +3647,27 @@ except Exception as e:
     channels[id] = { ...channels[id], ...cfg };
     if (saveChannelsConfig(channels)) {
       console.log(`[Channels] 保存通道: ${id}`);
+      // 同步到 Agent 后端（更新其内存缓存，失败不阻断本地保存）
+      try {
+        const postData = JSON.stringify({ id, ...cfg });
+        await new Promise((resolve) => {
+          const req = http.request({
+            hostname: 'localhost', port: agentPort,
+            path: `/api/channels/${encodeURIComponent(id)}`, method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postData) },
+            timeout: 5000,
+          }, (res) => {
+            res.on('data', () => {});
+            res.on('end', () => resolve());
+          });
+          req.on('error', (e) => { console.warn(`[Channels] 同步后端失败: ${e.message}`); resolve(); });
+          req.on('timeout', () => { req.destroy(); resolve(); });
+          req.write(postData);
+          req.end();
+        });
+      } catch (e) {
+        console.warn(`[Channels] 同步后端异常（本地已保存）: ${e.message}`);
+      }
       return { success: true, data: { id, ...channels[id] } };
     }
     return { success: false, message: '保存失败' };
@@ -3717,9 +3767,7 @@ except Exception as e:
   // ----- 模型管理 -----
   safeHandle('model:list', async () => {
     const config = loadConfig();
-    return {
-      current: config.model,
-      models: [
+    const staticModels = [
         // DeepSeek
         { id: 'deepseek-chat', name: 'DeepSeek Chat', provider: 'deepseek' },
         { id: 'deepseek-reasoner', name: 'DeepSeek Reasoner', provider: 'deepseek' },
@@ -3769,7 +3817,38 @@ except Exception as e:
         { id: 'kimi-k2.6', name: 'Kimi K2.6 (Coding Plan)', provider: 'coding_plan' },
         { id: 'minimax-m2.7', name: 'MiniMax M2.7 (Coding Plan)', provider: 'coding_plan' },
         { id: 'minimax-m3', name: 'MiniMax M3 (Coding Plan)', provider: 'coding_plan' },
-      ],
+    ];
+    // 合并用户已配置的自定义模型（从 ~/.duan/config.json profiles 读取）
+    try {
+      const duanConfig = loadDuanConfig();
+      let profiles = duanConfig.profiles || [];
+      if (!Array.isArray(profiles) && typeof profiles === 'object') {
+        profiles = Object.entries(profiles).map(([id, p]) => ({ id, ...p }));
+      }
+      const existingIds = new Set(staticModels.map(m => m.id));
+      for (const profile of profiles) {
+        // 单个 model 字段
+        if (profile.model && !existingIds.has(profile.model)) {
+          staticModels.push({ id: profile.model, name: profile.model, provider: profile.provider || 'custom' });
+          existingIds.add(profile.model);
+        }
+        // models 数组字段
+        if (Array.isArray(profile.models)) {
+          for (const m of profile.models) {
+            const mid = typeof m === 'string' ? m : (m.id || m.model);
+            if (mid && !existingIds.has(mid)) {
+              staticModels.push({ id: mid, name: typeof m === 'string' ? m : (m.name || mid), provider: profile.provider || 'custom' });
+              existingIds.add(mid);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[model:list] 合并用户模型失败:', e.message);
+    }
+    return {
+      current: config.model,
+      models: staticModels,
     };
   });
 
@@ -4288,8 +4367,13 @@ except Exception as e:
 
   // 获取技能列表（从 Web 服务器 API 获取真实数据）
   safeHandle('skills:remote', async () => {
-    let remoteSkills = await fetchFromAgent('/api/skills');
-    if (!remoteSkills || !Array.isArray(remoteSkills)) remoteSkills = [];
+    let remoteSkills = [];
+    try {
+      const r = await fetchFromAgent('/api/skills');
+      if (Array.isArray(r)) remoteSkills = r;
+    } catch (e) {
+      console.warn('[skills:remote] Agent 后端不可达，降级返回内置+用户技能:', e.message);
+    }
 
     const homeDir = os.homedir();
     const merged = [...remoteSkills];

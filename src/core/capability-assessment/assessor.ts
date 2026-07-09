@@ -65,6 +65,8 @@ export class CapabilityAssessor {
   private runtimeValues: Map<string, number> = new Map();
   /** 套件运行结果缓存（同一次评估内复用，避免重跑） */
   private suiteResultsCache: Map<CapabilityDimensionId, Array<{ caseId: string; score: number }>> = new Map();
+  /** 套件运行失败原因（用于 skipped 明细，避免裸错误冒泡到 UI） */
+  private suiteFailureReasons: Map<CapabilityDimensionId, string> = new Map();
 
   constructor(config: CapabilityAssessorConfig = {}) {
     this.dataPath = config.dataPath || duanPath('capability-assessment');
@@ -144,6 +146,7 @@ export class CapabilityAssessor {
 
     // 清理套件缓存
     this.suiteResultsCache.clear();
+    this.suiteFailureReasons.clear();
 
     return report;
   }
@@ -199,7 +202,10 @@ export class CapabilityAssessor {
         value = await this.getSuiteMetricValue(spec);
         sourceLabel = `suite:${spec.dimension}`;
         if (value === null) {
-          error = `suite-not-configured (dimension='${spec.dimension}')`;
+          const failReason = this.suiteFailureReasons.get(spec.dimension);
+          error = failReason
+            ? `suite-run-failed (dimension='${spec.dimension}': ${failReason})`
+            : `suite-not-configured (dimension='${spec.dimension}')`;
         }
       } else if (spec.source === 'new') {
         value = this.runtimeValues.has(spec.id) ? this.runtimeValues.get(spec.id)! : null;
@@ -237,6 +243,9 @@ export class CapabilityAssessor {
    * 从测试套件取值：
    * 同维度的所有 source='suite' 指标共享一次套件运行结果，
    * 通过指标 id 映射到对应用例得分聚合
+   *
+   * 容错：套件运行失败（如依赖未就绪）时返回 null，指标被记为 skipped，
+   * 不阻断维度其余指标或整体评估。
    */
   private async getSuiteMetricValue(spec: CapabilityMetricSpec): Promise<number | null> {
     const suite = this.suites[spec.dimension];
@@ -244,17 +253,25 @@ export class CapabilityAssessor {
       return null;
     }
 
-    // 同维度套件只跑一次
+    // 同维度套件只跑一次；失败则缓存空结果避免重试，并记录失败原因
     let results = this.suiteResultsCache.get(spec.dimension);
     if (!results) {
-      const raw = await suite.run();
-      results = raw.map(r => ({ caseId: r.caseId, score: r.score }));
+      try {
+        const raw = await suite.run();
+        results = raw.map(r => ({ caseId: r.caseId, score: r.score }));
+      } catch (err: unknown) {
+        // 套件运行失败（如 LLM/外部依赖未就绪）—— 不阻断整体评估
+        const reason = err instanceof Error ? err.message : String(err);
+        console.warn(`[CapabilityAssessor] 套件 '${spec.dimension}' 运行失败，跳过该维度 suite 指标: ${reason}`);
+        results = [];
+        this.suiteFailureReasons.set(spec.dimension, reason);
+      }
       this.suiteResultsCache.set(spec.dimension, results);
     }
 
     // 精细映射策略：优先用 caseId === spec.id 取对应用例得分；
     // 未命中则回退到维度均值（向后兼容旧 suite）。
-    if (results.length === 0) return 0;
+    if (results.length === 0) return null;
     const exact = results.find(r => r.caseId === spec.id);
     if (exact) return exact.score;
     const avg = results.reduce((s, r) => s + r.score, 0) / results.length;
