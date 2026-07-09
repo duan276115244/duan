@@ -7,6 +7,7 @@ import { VoiceInput } from './VoiceInput';
 import { VoiceOutput } from './VoiceOutput';
 import { JarvisMode } from './JarvisMode';
 import { SubAgentStatusCard } from './SubAgentStatusCard';
+import { ThinkingTrace } from './ThinkingTrace';
 
 const quickActions = [
   { id: 'search', icon: Search, label: '搜索资讯', prompt: '搜索今日热点新闻', color: '#06b6d4' },
@@ -172,48 +173,8 @@ const ToolCallCard = React.memo(({ tc, index, msgId, total, expandedToolResults,
 });
 
 // ===== 思考过程卡片 =====
-const ThinkCard = React.memo(({ thinking, msgId, isStreaming: isStream, hasTools, expandedThinking, setExpandedThinking }: {
-  thinking: string;
-  msgId: string;
-  isStreaming?: boolean;
-  hasTools?: boolean;
-  expandedThinking: Record<string, boolean>;
-  setExpandedThinking: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
-}) => {
-  const isExpanded = expandedThinking[msgId] ?? false;
-  const summary = thinking.length > 80 ? thinking.substring(0, 80) + '...' : thinking;
-
-  return (
-    <div className="think-card" style={{ marginBottom: hasTools ? 6 : 0 }}>
-      <button
-        onClick={() => setExpandedThinking(prev => ({ ...prev, [msgId]: !prev[msgId] }))}
-        style={{
-          width: '100%', display: 'flex', alignItems: 'center', gap: 6,
-          padding: 0, background: 'transparent', border: 'none', cursor: 'pointer',
-          color: '#a78bfa', fontSize: 11, fontWeight: 500, fontFamily: 'inherit',
-        }}
-      >
-        {isExpanded ? <ChevronDown style={{ width: 12, height: 12 }} /> : <ChevronRight style={{ width: 12, height: 12 }} />}
-        <Sparkles style={{ width: 11, height: 11 }} />
-        {isStream ? '思考中...' : '思考过程'}
-        {!isStream && !isExpanded && (
-          <span style={{ fontSize: 10, color: '#475569', marginLeft: 4, fontWeight: 400 }}>{summary}</span>
-        )}
-      </button>
-      {isExpanded && (
-        <div style={{ marginTop: 4, fontSize: 11, color: '#94a3b8', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', paddingLeft: 16, borderLeft: '2px solid rgba(167,139,250,.15)' }}>
-          {thinking}
-        </div>
-      )}
-      {!isStream && hasTools && (
-        <div style={{ marginTop: 3, fontSize: 10, color: '#06b6d4', display: 'flex', alignItems: 'center', gap: 3, paddingLeft: 16 }}>
-          <span style={{ width: 3, height: 3, borderRadius: '50%', background: '#06b6d4' }} />
-          思考完毕，开始执行
-        </div>
-      )}
-    </div>
-  );
-});
+// Phase D1: ThinkCard 已被 ThinkingTrace 取代（结构化渲染推理阶段 + 运行时事件）
+// 历史组件代码已移除，避免 noUnusedLocals 报错；如需复用请从 git 历史恢复。
 
 // ===== 消息操作按钮行 =====
 const MessageActions = React.memo(({ msgId, content, copiedId, handleCopy, handleRetry, handleRollback }: {
@@ -319,6 +280,8 @@ export function ChatArea({ onOpenConfig, onOpenBrowser, onActivateTool, toolPane
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   // 追踪当前正在流式响应的对话ID，避免切换对话后回调写入错误对话或影响新对话状态
   const streamingConvIdRef = useRef<string | null>(null);
+  // Phase G3: 本轮是否已自动折叠流式思考区（防止用户重新展开后又被折叠）
+  const autoCollapsedThinkRef = useRef(false);
   const { sendMessage, abort } = useChatStream();
   const { config } = useConfig();
   const defaultModel = config?.defaultModel || 'auto';
@@ -461,6 +424,14 @@ export function ChatArea({ onOpenConfig, onOpenBrowser, onActivateTool, toolPane
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, streamingText]);
 
+  // Phase G3: 实际回答开始流式时，自动折叠流式思考区（让答案立即可见）
+  // 仅本轮触发一次；用户此后若重新展开不会被再次折叠
+  useEffect(() => {
+    if (!streamingText || autoCollapsedThinkRef.current) return;
+    autoCollapsedThinkRef.current = true;
+    setExpandedThinking(prev => (prev['__streaming__'] ? { ...prev, __streaming__: false } : prev));
+  }, [streamingText]);
+
   // 当模型选择器打开时，加载所有已配置供应商的可用模型及性能数据
   useEffect(() => {
     if (!showModelPicker) return;
@@ -566,6 +537,8 @@ export function ChatArea({ onOpenConfig, onOpenBrowser, onActivateTool, toolPane
     setStreamingText('');
     setStreamingThinking('');
     setStreamingToolCalls([]);
+    // Phase G3: 重置自动折叠标记（每轮独立）
+    autoCollapsedThinkRef.current = false;
 
     const currentMsgs = useChatStore.getState().conversations.find(c => c.id === targetConvId)?.messages || [];
     // 非重试时用户消息已在上方 addMessage 加入 store，无需重复追加
@@ -601,7 +574,10 @@ export function ChatArea({ onOpenConfig, onOpenBrowser, onActivateTool, toolPane
       sendMessage(msg, hist, (event) => {
         // 仅当目标对话仍是当前查看的对话时才更新流式展示，避免切换对话后内容串台
         const isCurrent = streamingConvIdRef.current === useChatStore.getState().currentConversationId;
-        if (event.type === 'think') { accThink += (event.content || ''); if (isCurrent) setStreamingThinking(accThink); }
+        if (event.type === 'think') {
+          accThink += (event.content || '');
+          if (isCurrent) { setStreamingThinking(accThink); setIsTyping(false); }
+        }
         else if (event.type === 'text') { accText += (event.content || ''); if (isCurrent) { setStreamingText(accText); setIsTyping(false); } }
         else if (event.type === 'tool_call') {
           accTools.push({ name: event.toolName || 'unknown', args: (event as any).toolArgs, result: undefined, status: 'running', startTime: Date.now() });
@@ -1568,9 +1544,9 @@ export function ChatArea({ onOpenConfig, onOpenBrowser, onActivateTool, toolPane
                   )}
                   {msg.role === 'assistant' && (
                     <>
-                      {/* 思考过程 */}
+                      {/* 思考过程 — Phase D1: 改用 ThinkingTrace 结构化渲染 */}
                       {msg.thinking && (
-                        <ThinkCard thinking={msg.thinking} msgId={msg.id} hasTools={!!(msg.toolCalls && msg.toolCalls.length > 0)} expandedThinking={expandedThinking} setExpandedThinking={setExpandedThinking} />
+                        <ThinkingTrace thinking={msg.thinking} msgId={msg.id} hasTools={!!(msg.toolCalls && msg.toolCalls.length > 0)} expandedThinking={expandedThinking} setExpandedThinking={setExpandedThinking} />
                       )}
                       {/* 工具调用 */}
                       {msg.toolCalls && msg.toolCalls.length > 0 && (
@@ -1628,7 +1604,7 @@ export function ChatArea({ onOpenConfig, onOpenBrowser, onActivateTool, toolPane
                 <div style={{ flex: 1, minWidth: 0 }}>
                   {isTyping && <div className="typing-indicator" style={{ marginBottom: 6 }}><span /><span /><span /></div>}
                   {streamingThinking && (
-                    <ThinkCard thinking={streamingThinking} msgId="__streaming__" isStreaming={true} hasTools={streamingToolCalls.length > 0} expandedThinking={expandedThinking} setExpandedThinking={setExpandedThinking} />
+                    <ThinkingTrace thinking={streamingThinking} msgId="__streaming__" isStreaming={true} hasTools={streamingToolCalls.length > 0} expandedThinking={expandedThinking} setExpandedThinking={setExpandedThinking} />
                   )}
                   {streamingToolCalls.length > 0 && (
                     <div style={{ marginBottom: 6 }}>

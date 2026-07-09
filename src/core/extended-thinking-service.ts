@@ -18,6 +18,23 @@ export interface ExtendedThinkingContext {
   readonly searchMemoryWithCache: (query: string, topK: number) => Promise<unknown[]>;
 }
 
+// ============ 类型：流式思考阶段 ============
+
+/**
+ * Phase D1: 流式思考阶段事件
+ *
+ * 每个阶段作为独立事件 yield，让 enhanced-agent-loop 逐阶段推送 think 事件，
+ * 前端可以看到推理过程逐步展开（而非等待全部完成）。
+ */
+export interface ThinkingPhaseEvent {
+  /** 阶段 emoji 前缀（🧩/🎯/💡/🔍/⚠️/📚）— 前端据此识别阶段边界 */
+  emoji: string;
+  /** 阶段标题（问题分解/约束识别/方案生成/边缘情况/风险评估/相关经验） */
+  title: string;
+  /** 阶段正文（多行 markdown，已含缩进） */
+  body: string;
+}
+
 // ============ 主编排函数 ============
 
 /**
@@ -25,68 +42,99 @@ export interface ExtendedThinkingContext {
  *
  * 不调用 LLM，基于规则的问题分解 + 约束识别 + 方案生成 + 边缘情况枚举。
  * 结果注入上下文，帮助 LLM 做出更好的决策。
+ *
+ * 注意：本函数保持原签名（返回 Promise<string>）以维持向后兼容。
+ * 新代码请改用 runExtendedThinkingStream 获取阶段级流式输出。
  */
 export async function runExtendedThinking(
   ctx: ExtendedThinkingContext,
   problem: string,
   depth: 'shallow' | 'medium' | 'deep',
 ): Promise<string> {
-  const steps: string[] = [];
+  const phases: ThinkingPhaseEvent[] = [];
+  for await (const phase of runExtendedThinkingStream(ctx, problem, depth)) {
+    phases.push(phase);
+  }
+  // 拼接为单一 markdown 字符串（兼容历史调用方）
+  return phases
+    .map(p => `${p.emoji} ${p.title}\n${p.body}`)
+    .join('\n');
+}
 
-  // Step 1: 问题分解
-  steps.push('## 问题分解');
-  const subProblems = decomposeProblem(problem);
-  subProblems.forEach((sp, i) => steps.push(`  ${i + 1}. ${sp}`));
-
-  // Step 2: 约束识别
-  steps.push('\n## 约束识别');
-  const constraints = identifyConstraints(problem);
-  if (constraints.length > 0) {
-    constraints.forEach(c => steps.push(`  - ${c}`));
-  } else {
-    steps.push('  - 未识别到明确约束');
+/**
+ * Phase D1: 流式 Extended Thinking — 逐阶段 yield 思考事件
+ *
+ * 改造目的：让前端能够看到推理步骤逐步展开（而非等待全部完成）。
+ *
+ * 与 runExtendedThinking 的关系：
+ * - runExtendedThinking 现已重构为消费本流的薄包装（保持向后兼容签名）
+ * - enhanced-agent-loop 直接消费本流，每个 phase 单独 yield 一个 think 事件
+ *
+ * @yields ThinkingPhaseEvent 每个思考阶段（含 emoji + 标题 + 正文）
+ */
+export async function* runExtendedThinkingStream(
+  ctx: ExtendedThinkingContext,
+  problem: string,
+  depth: 'shallow' | 'medium' | 'deep',
+): AsyncGenerator<ThinkingPhaseEvent, void, void> {
+  // Phase 1: 问题分解
+  {
+    const subProblems = decomposeProblem(problem);
+    const body = subProblems.map((sp, i) => `  ${i + 1}. ${sp}`).join('\n');
+    yield { emoji: '🧩', title: '问题分解', body };
   }
 
-  // Step 3: 方案生成
+  // Phase 2: 约束识别
+  {
+    const constraints = identifyConstraints(problem);
+    const body =
+      constraints.length > 0
+        ? constraints.map(c => `  - ${c}`).join('\n')
+        : '  - 未识别到明确约束';
+    yield { emoji: '🎯', title: '约束识别', body };
+  }
+
+  // Phase 3: 方案生成（shallow 跳过）
   if (depth !== 'shallow') {
-    steps.push(`\n## 方案生成 (深度: ${depth})`);
     const solutions = generateSolutions(problem, depth === 'deep' ? 5 : 3);
-    solutions.forEach((s, i) => steps.push(`  方案${i + 1}: ${s}`));
+    const body = solutions.map((s, i) => `  方案${i + 1}: ${s}`).join('\n');
+    yield { emoji: '💡', title: `方案生成 (深度: ${depth})`, body };
   }
 
-  // Step 4: 边缘情况枚举
+  // Phase 4: 边缘情况枚举（shallow 跳过）
   if (depth === 'deep' || depth === 'medium') {
-    steps.push('\n## 边缘情况枚举');
     const edgeCases = enumerateEdgeCases(problem);
-    if (edgeCases.length > 0) {
-      edgeCases.forEach(ec => steps.push(`  - ${ec}`));
-    } else {
-      steps.push('  - 未识别到明显边缘情况');
-    }
+    const body =
+      edgeCases.length > 0
+        ? edgeCases.map(ec => `  - ${ec}`).join('\n')
+        : '  - 未识别到明显边缘情况';
+    yield { emoji: '🔍', title: '边缘情况枚举', body };
   }
 
-  // Step 5: 风险评估
+  // Phase 5: 风险评估（仅 deep）
   if (depth === 'deep') {
-    steps.push('\n## 风险评估');
-    steps.push('  - 注意并发安全和数据竞争');
-    steps.push('  - 验证边界条件（空值、极值、溢出）');
-    steps.push('  - 考虑向后兼容性和迁移成本');
+    const body = [
+      '  - 注意并发安全和数据竞争',
+      '  - 验证边界条件（空值、极值、溢出）',
+      '  - 考虑向后兼容性和迁移成本',
+    ].join('\n');
+    yield { emoji: '⚠️', title: '风险评估', body };
   }
 
-  // Step 6: 相关经验检索（如果有记忆系统）
+  // Phase 6: 相关经验检索（如果有记忆系统）
   if (ctx.memoryOrchestrator) {
     try {
       const memories = await ctx.searchMemoryWithCache(problem, 3);
       if (memories && memories.length > 0) {
-        steps.push('\n## 相关经验');
-        memories.forEach((m: any, i: number) => {
-          steps.push(`  ${i + 1}. [${m.type || 'memory'}] ${(m.content || '').substring(0, 120)}`);
-        });
+        const body = memories
+          .map((m: any, i: number) => `  ${i + 1}. [${m.type || 'memory'}] ${(m.content ?? '').substring(0, 120)}`)
+          .join('\n');
+        yield { emoji: '📚', title: '相关经验', body };
       }
-    } catch {}
+    } catch {
+      // 记忆检索失败不影响后续阶段
+    }
   }
-
-  return steps.join('\n');
 }
 
 // ============ 纯规则函数（无外部依赖） ============

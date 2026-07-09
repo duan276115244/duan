@@ -1,0 +1,12 @@
+{
+  "thinking": { "zh-CN": "思考中", "en-US": "Thinking", "ja-JP": "考え中" },
+  "connecting": { "zh-CN": "正在连接", "en-US": "Connecting to", "ja-JP": "接続中" },
+  "processing": { "zh-CN": "处理中", "en-US": "Processing", "ja-JP": "処理中" },
+  "completed": { "zh-CN": "已完成", "en-US": "Completed", "ja-JP": "完了" },
+  "error": { "zh-CN": "处理异常", "en-US": "Error", "ja-JP": "エラー" },
+  "retrying": { "zh-CN": "正在尝试更换策略", "en-US": "Switching strategy", "ja-JP": "戦略を切替中" },
+  "plan_phase": { "zh-CN": "规划", "en-US": "Plan", "ja-JP": "計画" },
+  "execute_phase": { "zh-CN": "执行", "en-US": "Execute", "ja-JP": "実行" },
+  "reflect_phase": { "zh-CN": "反思", "en-US": "Reflect", "ja-JP": "振返" },
+  "learn_phase": { "zh-CN": "学习", "en-US": "Learn", "ja-JP": "学習" }
+}
