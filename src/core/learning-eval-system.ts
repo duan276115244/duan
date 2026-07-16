@@ -16,6 +16,7 @@ import * as path from 'path';
 import { logger } from './structured-logger.js';
 import { EventBus } from './event-bus.js';
 import { duanPath } from './duan-paths.js';
+import { atomicWriteJsonSync } from './atomic-write.js';
 
 const DEFAULT_EVAL_DIR = duanPath('eval-metrics');
 
@@ -366,13 +367,12 @@ export class LearningEvalSystem {
 
   private persistState(): void {
     try {
-      const data = JSON.stringify({
+      const data = {
         snapshots: this.snapshots,
         abTests: Array.from(this.abTests.values()),
-      });
-      const tmp = path.join(this.evalDir, `state.${process.pid}.tmp`);
-      fs.writeFileSync(tmp, data, 'utf-8');
-      fs.renameSync(tmp, path.join(this.evalDir, 'state.json'));
+      };
+      // 原子写入：统一使用 atomicWriteJsonSync（tmp + rename）
+      atomicWriteJsonSync(path.join(this.evalDir, 'state.json'), data);
     } catch { this.log.warn('学习评估状态持久化失败'); }
   }
 }

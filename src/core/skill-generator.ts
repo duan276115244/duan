@@ -17,6 +17,7 @@ import { createHash } from 'crypto';
 import { logger } from './structured-logger.js';
 import { EventBus } from './event-bus.js';
 import { duanPath } from './duan-paths.js';
+import { atomicWriteJsonSync } from './atomic-write.js';
 
 const DEFAULT_SKILLS_DIR = duanPath('generated-skills');
 
@@ -457,14 +458,13 @@ requires: []
 
   private persistState(): void {
     try {
-      const data = JSON.stringify({
+      const data = {
         skills: Object.fromEntries(this.skills),
         versions: Object.fromEntries(this.versions),
         qualityLog: Object.fromEntries(this.qualityLog),
-      });
-      const tmp = path.join(this.skillsDir, `registry.${process.pid}.tmp`);
-      fs.writeFileSync(tmp, data, 'utf-8');
-      fs.renameSync(tmp, path.join(this.skillsDir, 'registry.json'));
+      };
+      // 原子写入：统一使用 atomicWriteJsonSync（tmp + rename）
+      atomicWriteJsonSync(path.join(this.skillsDir, 'registry.json'), data);
     } catch { this.log.warn('技能注册表持久化失败'); }
   }
 }

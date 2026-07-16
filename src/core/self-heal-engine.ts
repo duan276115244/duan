@@ -28,6 +28,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { duanPath } from './duan-paths.js';
+import { atomicWriteJsonSync } from './atomic-write.js';
 
 // ========== 类型定义 ==========
 
@@ -571,10 +572,8 @@ export class SelfHealingEngine {
           const bakPath = `${memPath}.corrupt.${Date.now()}.bak`;
           try { fs.copyFileSync(memPath, bakPath); } catch { /* 忽略备份失败 */ }
         }
-        // 原子写：temp + rename
-        const tmpPath = `${memPath}.${process.pid}.tmp`;
-        fs.writeFileSync(tmpPath, json, 'utf-8');
-        fs.renameSync(tmpPath, memPath);
+        // 原子写：统一使用 atomicWriteJsonSync（tmp + rename）
+        atomicWriteJsonSync(memPath, backup);
         // 验证重建后可解析
         JSON.parse(fs.readFileSync(memPath, 'utf-8'));
         return Promise.resolve('context-memory.json已重建为默认状态（已备份损坏文件）');
@@ -612,10 +611,8 @@ export class SelfHealingEngine {
           const bakPath = `${configPath}.corrupt.${Date.now()}.bak`;
           try { fs.copyFileSync(configPath, bakPath); } catch { /* 忽略备份失败 */ }
         }
-        // 原子写：temp + rename
-        const tmpPath = `${configPath}.${process.pid}.tmp`;
-        fs.writeFileSync(tmpPath, json, 'utf-8');
-        fs.renameSync(tmpPath, configPath);
+        // 原子写：统一使用 atomicWriteJsonSync（tmp + rename）
+        atomicWriteJsonSync(configPath, backup);
         // 验证重建后可解析
         JSON.parse(fs.readFileSync(configPath, 'utf-8'));
         return Promise.resolve('config.json已重建为默认配置（已备份损坏文件）');

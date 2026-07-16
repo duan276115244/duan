@@ -12,7 +12,7 @@
  * 通过 inject* 方法注入 mock 依赖，验证字段赋值和统计同步逻辑。
  * 不调用 run()（需要 LLM），仅测试接入点的副作用。
  */
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { EnhancedAgentLoop } from '../enhanced-agent-loop.js';
 import { UnifiedToolFramework } from '../unified-tool-framework.js';
 import { ToolConsolidation } from '../tool-consolidation.js';
@@ -24,6 +24,11 @@ describe('P0-5: EnhancedAgentLoop 主循环接入点', () => {
   beforeEach(() => {
     // 用默认配置创建实例（内部用 ToolRegistry，无 LLM 依赖）
     loop = new EnhancedAgentLoop({});
+  });
+
+  afterEach(() => {
+    // 清理 cognitiveOrchestrator + _cleanupFns（EventBus 订阅 handle 等），避免跨测试监听器累积
+    try { loop?.dispose(); } catch { /* 静默 */ }
   });
 
   // ============ P0-1: UnifiedToolFramework 接入 ============

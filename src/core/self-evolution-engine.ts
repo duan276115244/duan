@@ -1234,7 +1234,7 @@ ${results.map((r, i) => `${i + 1}. ${r}`).join('\n')}
           {},
           process.env.DEEPSEEK_MODEL || 'deepseek-chat',
         );
-        const text = completion.choices[0].message.content;
+        const text = completion.choices?.[0]?.message?.content;
         if (text) return text;
       } catch {}
     }
@@ -1257,7 +1257,7 @@ ${results.map((r, i) => `${i + 1}. ${r}`).join('\n')}
           {},
           process.env.OPENROUTER_MODEL || 'openai/gpt-4o-mini',
         );
-        const text = completion.choices[0].message.content;
+        const text = completion.choices?.[0]?.message?.content;
         if (text) return text;
       } catch {}
     }
@@ -1278,7 +1278,7 @@ ${results.map((r, i) => `${i + 1}. ${r}`).join('\n')}
           {},
           process.env.OPENAI_MODEL || 'gpt-4-turbo',
         );
-        const text = completion.choices[0].message.content;
+        const text = completion.choices?.[0]?.message?.content;
         if (text) return text;
       } catch {}
     }

@@ -127,6 +127,9 @@ export class ToolIntegrationOptimizer {
   /** 当前批处理分组映射（工具名 → 批组号） */
   private pendingBatches = new Map<string, number>();
 
+  /** 批组清理定时器映射（工具名 → setTimeout 句柄） */
+  private batchTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+
   /** 总体统计 */
   private totalCalls = 0;
   private totalCacheHits = 0;
@@ -191,8 +194,16 @@ export class ToolIntegrationOptimizer {
       this.batchCounter++;
       batchGroup = this.batchCounter;
       this.pendingBatches.set(toolName, batchGroup);
-      // 5 秒后自动清除批组
-      setTimeout(() => this.pendingBatches.delete(toolName), 5000);
+      // 5 秒后自动清除批组（保存句柄以便清理）
+      const prevTimer = this.batchTimers.get(toolName);
+      if (prevTimer) clearTimeout(prevTimer);
+      this.batchTimers.set(
+        toolName,
+        setTimeout(() => {
+          this.pendingBatches.delete(toolName);
+          this.batchTimers.delete(toolName);
+        }, 5000),
+      );
     }
 
     // 3. 参数预校验
@@ -301,8 +312,13 @@ export class ToolIntegrationOptimizer {
       profile.cacheMisses++; // 这是新写入，算作 cache miss
     }
 
-    // 清理过期的批组
+    // 清理过期的批组及其定时器
     this.pendingBatches.delete(toolName);
+    const batchTimer = this.batchTimers.get(toolName);
+    if (batchTimer) {
+      clearTimeout(batchTimer);
+      this.batchTimers.delete(toolName);
+    }
 
     // 生成洞察
     const insights = this.generateInsights(profile, duration, success);
@@ -530,6 +546,14 @@ export class ToolIntegrationOptimizer {
       cacheSize: this.cache.size,
       pendingBatches: this.pendingBatches.size,
     };
+  }
+
+  /** 清理所有批组定时器（销毁时调用） */
+  dispose(): void {
+    for (const timer of this.batchTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.batchTimers.clear();
   }
 
   // ============ Agent Loop 工具定义 ============

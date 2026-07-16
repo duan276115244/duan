@@ -1548,10 +1548,8 @@ export class SessionPersistence {
       const threadsDir = path.join(this.sessionsDir, 'threads');
       fs.mkdirSync(threadsDir, { recursive: true });
       const filePath = path.join(threadsDir, `${threadId}.json`);
-      // 原子写入：先写 .tmp 再 rename，防止写入过程中崩溃导致文件损坏
-      const tmpPath = `${filePath}.tmp`;
-      fs.writeFileSync(tmpPath, JSON.stringify(thread, null, 2), 'utf-8');
-      fs.renameSync(tmpPath, filePath);
+      // 原子写入：统一使用 atomicWriteJsonSync（tmp + rename）防止部分写入
+      atomicWriteJsonSync(filePath, thread);
       return true;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);

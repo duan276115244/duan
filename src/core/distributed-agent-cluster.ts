@@ -403,8 +403,9 @@ export class RaftConsensus {
       lastLogTerm: this.log[this.log.length - 1]?.term ?? 0,
     });
 
-    // 等待投票响应（简化：超时后检查）
-    setTimeout(() => {
+    // 等待投票响应（简化：超时后检查）— 保存句柄以便在成为 leader/收到心跳/停止时清理
+    if (this.electionTimer) clearTimeout(this.electionTimer);
+    this.electionTimer = setTimeout(() => {
       if (this.role === 'candidate' && this.votesReceived.size > Math.floor((this.peers.size + 1) / 2)) {
         this.becomeLeader();
       }

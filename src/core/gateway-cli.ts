@@ -157,23 +157,26 @@ async function startGateway(): Promise<void> {
     console.info(`  ${d('按 Ctrl+C 停止网关')}`);
     console.info('');
 
-    // 保持进程运行
-    process.on('SIGINT', () => {
+    // 保持进程不退出（保存引用以便清理）
+    const keepAlive = setInterval(() => {}, 1000);
+    keepAlive.unref();
+
+    // 合并的退出信号处理：先停止网关 → 清理 keepAlive → 退出
+    const shutdown = (): void => {
       console.info(`\n  ${w('⚠')} 正在停止网关...`);
       if (gatewayInstance) {
         void gatewayInstance.stop().then(() => {
           console.info(`  ${g('✓')} 网关已停止`);
+          clearInterval(keepAlive);
           process.exit(0);
         });
       } else {
+        clearInterval(keepAlive);
         process.exit(0);
       }
-    });
-
-    // 保持进程不退出（保存引用以便清理）
-    const keepAlive = setInterval(() => {}, 1000);
-    process.on('SIGINT', () => { clearInterval(keepAlive); process.exit(0); });
-    process.on('SIGTERM', () => { clearInterval(keepAlive); process.exit(0); });
+    };
+    process.on('SIGINT', shutdown);
+    process.on('SIGTERM', shutdown);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.info(`  ${e('✗')} 网关启动失败: ${msg}`);

@@ -754,6 +754,7 @@ class MCPClient {
       this.process = child;
       let resolved = false;
       let stderrOutput = '';
+      let readyTimer: ReturnType<typeof setTimeout> | undefined;
 
       child.stdout?.on('data', (data: Buffer) => {
         this.handleData(data.toString());
@@ -766,6 +767,7 @@ class MCPClient {
       });
 
       child.on('error', (err) => {
+        if (readyTimer) clearTimeout(readyTimer);
         if (!resolved) {
           resolved = true;
           reject(err);
@@ -791,13 +793,22 @@ class MCPClient {
         this.handleDisconnect().catch(() => {});
       });
 
-      // 等待进程就绪
-      setTimeout(() => {
+      // 等待进程就绪（保存句柄以便在 spawn/error 时清理）
+      readyTimer = setTimeout(() => {
         if (!resolved) {
           resolved = true;
           resolve();
         }
       }, 500);
+
+      // 进程正常启动后即就绪，清理超时兜底
+      child.on('spawn', () => {
+        if (readyTimer) clearTimeout(readyTimer);
+        if (!resolved) {
+          resolved = true;
+          resolve();
+        }
+      });
     });
   }
 

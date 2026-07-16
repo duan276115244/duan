@@ -247,9 +247,11 @@ export class CollaborativeWorkspace {
   private executeTask(task: Task): Promise<unknown> {
     // 根据任务类型执行
     return new Promise((resolve) => {
-      setTimeout(() => {
+      const timer = setTimeout(() => {
         resolve({ taskId: task.id, type: task.type, agent: task.assignedAgent, completed: true });
       }, 100); // 模拟执行时间
+      // 模拟任务无取消机制，标记为 unref 避免阻止进程退出
+      if (typeof timer.unref === 'function') timer.unref();
     });
   }
 

@@ -802,6 +802,7 @@ export class VoiceSystem {
       const audioChunks: Buffer[] = [];
       let resolved = false;
       let writeStream: fs.WriteStream | null = null;
+      let requestTimeout: ReturnType<typeof setTimeout> | undefined;
 
       // 连接超时保护（10 秒未连接则失败）
       const connectTimeout = setTimeout(() => {
@@ -893,6 +894,7 @@ export class VoiceSystem {
       });
 
       ws.on('error', (err: Error) => {
+        if (requestTimeout) clearTimeout(requestTimeout);
         if (!resolved) {
           resolved = true;
           reject(new Error(`Edge-TTS WebSocket 错误: ${err.message}`));
@@ -900,6 +902,7 @@ export class VoiceSystem {
       });
 
       ws.on('close', () => {
+        if (requestTimeout) clearTimeout(requestTimeout);
         if (!resolved) {
           resolved = true;
           const finishWrite = () => {
@@ -921,7 +924,7 @@ export class VoiceSystem {
       });
 
       // 超时保护
-      setTimeout(() => {
+      requestTimeout = setTimeout(() => {
         if (!resolved) {
           resolved = true;
           ws.close();

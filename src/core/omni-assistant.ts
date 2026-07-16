@@ -103,7 +103,7 @@ export class OmniAssistant {
           ],
           max_tokens: 512,
         });
-        response = completion.choices[0].message.content || '{}';
+        response = completion.choices?.[0]?.message?.content || '{}';
       } else {
         return { type: 'general', parameters: {} };
       }
@@ -177,7 +177,7 @@ export class OmniAssistant {
         ],
         max_tokens: 1024,
       });
-      response = completion.choices[0].message.content || '';
+      response = completion.choices?.[0]?.message?.content || '';
     } else {
       response = `步骤1: execute_command(dir) - 列出当前目录`;
     }
