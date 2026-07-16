@@ -438,6 +438,58 @@ const BUILTIN_TOOL_METAS: ToolMeta[] = [
   { name: 'async_task_logs', category: 'read', risk: 'safe', keywords: ['异步', '任务', '日志', 'async', 'task', 'logs', '输出'] },
   { name: 'async_task_templates', category: 'read', risk: 'safe', keywords: ['异步', '任务', '模板', 'async', 'task', 'templates', '预定义'] },
   { name: 'async_task_stats', category: 'read', risk: 'safe', keywords: ['异步', '任务', '统计', 'async', 'task', 'stats', '汇总'] },
+
+  // ===== v21.1 P0-A: 打通已有能力最后一公里 — 补全 4 个模块的工具元信息 =====
+  // 缺失时这些工具在非 mixed 意图下被过滤，LLM 看不到 ast_*/checkpoint_*/code_graph_*/worktree_*
+
+  // shadow-git.ts — Checkpoint 快照回滚（对标 Gemini CLI /restore）
+  { name: 'checkpoint_create', category: 'write', risk: 'moderate', keywords: ['检查点', '快照', '创建', 'checkpoint', 'snapshot', 'create', '保存当前状态'] },
+  { name: 'checkpoint_restore', category: 'write', risk: 'dangerous', keywords: ['检查点', '恢复', '回滚', '还原', 'checkpoint', 'restore', 'rewind', 'rollback', 'revert'] },
+  { name: 'checkpoint_list', category: 'read', risk: 'safe', keywords: ['检查点', '列表', '历史', 'checkpoint', 'list', 'history', '快照列表'] },
+  { name: 'checkpoint_diff', category: 'read', risk: 'safe', keywords: ['检查点', '差异', '对比', 'checkpoint', 'diff', 'compare', '变更'] },
+
+  // tree-sitter-ast.ts — AST 代码分析（对标 Aider Repo Map 解析基础）
+  { name: 'ast_parse', category: 'read', risk: 'safe', keywords: ['AST', '解析', '语法树', 'parse', 'abstract syntax tree', '代码分析', '语法分析'] },
+  { name: 'ast_project', category: 'read', risk: 'safe', keywords: ['AST', '项目', '全局', 'ast', 'project', '项目结构', '符号总览'] },
+  { name: 'ast_usages', category: 'read', risk: 'safe', keywords: ['AST', '引用', '使用', 'usages', 'references', '谁调用了', '符号引用'] },
+  { name: 'ast_smells', category: 'read', risk: 'safe', keywords: ['AST', '代码异味', '坏味道', 'smells', 'code smell', '长函数', '深嵌套', '上帝类'] },
+  { name: 'ast_structure', category: 'read', risk: 'safe', keywords: ['AST', '结构', 'structure', '类层次', '继承', '代码结构'] },
+  { name: 'ast_dependencies', category: 'read', risk: 'safe', keywords: ['AST', '依赖', 'dependencies', '依赖图', '循环依赖', 'import 关系'] },
+
+  // code-knowledge-graph.ts — 代码知识图谱（对标 Cursor 代码索引）
+  { name: 'code_graph_query', category: 'read', risk: 'safe', keywords: ['代码图谱', '知识图谱', '查询', 'code graph', 'query', '调用关系', '函数关系'] },
+  { name: 'code_graph_stats', category: 'read', risk: 'safe', keywords: ['代码图谱', '统计', 'stats', '节点数', '边数', '图谱规模'] },
+  { name: 'code_graph_analyze', category: 'read', risk: 'safe', keywords: ['代码图谱', '分析', 'analyze', '解析项目', '构建图谱', '代码索引'] },
+
+  // git-worktree.ts — Git Worktree 多分支并行（对标 Cursor 2.0 多 Agent 并行）
+  { name: 'worktree_create', category: 'execute', risk: 'moderate', keywords: ['worktree', '工作树', '创建分支', '并行开发', 'git worktree', 'create', '隔离开发'] },
+  { name: 'worktree_remove', category: 'execute', risk: 'dangerous', keywords: ['worktree', '删除', '清理', 'remove', 'cleanup', '移除工作树'] },
+  { name: 'worktree_list', category: 'read', risk: 'safe', keywords: ['worktree', '列表', '所有工作树', 'list', 'worktrees', '工作树列表'] },
+  { name: 'worktree_exec', category: 'execute', risk: 'moderate', keywords: ['worktree', '执行', '命令', 'exec', 'run in worktree', '工作树内执行'] },
+  { name: 'worktree_merge', category: 'execute', risk: 'dangerous', keywords: ['worktree', '合并', 'merge', 'squash', 'rebase', '合并工作树'] },
+  { name: 'worktree_diff', category: 'read', risk: 'safe', keywords: ['worktree', '差异', 'diff', '工作树差异', '变更对比'] },
+  { name: 'worktree_sync', category: 'execute', risk: 'moderate', keywords: ['worktree', '同步', 'sync', 'rebase', 'stash', '工作树同步'] },
+
+  // ===== v21.1 P0-B: Spec-Driven Development 工件流程（对标 GitHub Spec Kit）=====
+  { name: 'spec_create', category: 'plan', risk: 'moderate', keywords: ['spec', '规范', '需求', '创建规范', 'specify', '需求文档', '功能规范'] },
+  { name: 'spec_plan', category: 'plan', risk: 'moderate', keywords: ['spec', '技术方案', 'plan', '架构方案', '实现方案', '技术规划'] },
+  { name: 'spec_tasks', category: 'plan', risk: 'moderate', keywords: ['spec', '任务拆解', 'tasks', '任务清单', '任务列表', '可执行步骤'] },
+  { name: 'spec_implement', category: 'execute', risk: 'moderate', keywords: ['spec', '实现', '执行任务', 'implement', '按任务执行', '开发实现'] },
+  { name: 'spec_check', category: 'read', risk: 'safe', keywords: ['spec', '自查', '验证', 'check', '合规', '验收', 'checklist'] },
+  { name: 'spec_list', category: 'read', risk: 'safe', keywords: ['spec', '列表', '所有规范', 'list specs', '规范列表'] },
+  { name: 'spec_get', category: 'read', risk: 'safe', keywords: ['spec', '详情', '获取', 'get spec', '规范详情', '规范内容'] },
+
+  // ===== v21.1 P0-C: Repo Map 重要性排序（对标 Aider RepoMap）=====
+  { name: 'repo_map_generate', category: 'read', risk: 'safe', keywords: ['repo map', '代码地图', '仓库地图', '项目地图', 'generate', '代码结构', '符号地图'] },
+  { name: 'repo_map_query', category: 'read', risk: 'safe', keywords: ['repo map', '查询符号', '重要性', 'query', 'symbol rank', '符号查询'] },
+  { name: 'repo_map_symbols', category: 'read', risk: 'safe', keywords: ['repo map', '重要符号', 'top symbols', '关键符号', '核心 API', '符号列表'] },
+
+  // ===== v21.1 P0-D: Plan Mode 可编辑计划（对标 Cursor Plan Mode）=====
+  { name: 'plan_create', category: 'plan', risk: 'safe', keywords: ['计划', '创建计划', '方案', 'plan', 'create plan', '规划', '制定计划'] },
+  { name: 'plan_update', category: 'plan', risk: 'moderate', keywords: ['计划', '更新', '修改计划', '调整', 'plan', 'update', 'modify', '调整计划'] },
+  { name: 'plan_confirm', category: 'plan', risk: 'moderate', keywords: ['计划', '确认', '批准', '开始执行', 'plan', 'confirm', 'approve', 'start'] },
+  { name: 'plan_cancel', category: 'plan', risk: 'moderate', keywords: ['计划', '取消', '放弃', 'plan', 'cancel', 'abort', '取消计划'] },
+  { name: 'plan_list', category: 'read', risk: 'safe', keywords: ['计划', '列表', '所有计划', 'plan', 'list', '计划列表', '历史计划'] },
 ];
 
 // ============ 意图→工具类别映射 ============
@@ -583,7 +635,15 @@ const INTENT_KEYWORDS: Record<TaskIntent, { keywords: string[]; weight: number }
       '上下文文件', '上下文统计', '上下文搜索', '上下文清理', 'file context',
       // v21.0 §4: 异步任务托管属 mixed 意图（后台任务跨多类）
       '异步任务', '后台任务', 'async task', '任务队列', '任务托管', '任务进度',
-      '任务取消', '任务日志', '任务模板', '任务统计'],
+      '任务取消', '任务日志', '任务模板', '任务统计',
+      // v21.1 P0-A: 代码分析/检查点/worktree 属 mixed（跨 read/write/execute 多类）
+      'AST', '语法树', '代码图谱', '检查点', '快照', '回滚', 'worktree', '工作树',
+      // v21.1 P0-B: Spec-Driven 工件流程属 mixed（plan + execute 跨类）
+      'spec', '规范', '需求文档', '技术方案', '任务拆解', 'checklist', '验收',
+      // v21.1 P0-C: Repo Map 属 mixed（read + search 跨类）
+      'repo map', '代码地图', '仓库地图', '符号地图', '代码结构',
+      // v21.1 P0-D: Plan Mode 属 mixed（plan + execute 跨类）
+      '创建计划', '确认计划', '取消计划', '计划列表', '可编辑计划'],
     weight: 0.3,
   },
 };

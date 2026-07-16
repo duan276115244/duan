@@ -99,7 +99,7 @@ async function main() {
   if (args.includes('--help') || args.includes('-h')) { showHelp(); return; }
   
   if (args.includes('--version') || args.includes('-v')) {
-    console.info(`  ${cy('段先生')} ${a('v21.0')}`);
+    console.info(`  ${cy('段先生')} ${a('v21.1')}`);
     return;
   }
 

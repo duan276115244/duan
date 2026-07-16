@@ -240,6 +240,26 @@ import {
   createAsyncTaskToolHandler,
 } from './async-task-manager.js';
 
+// ===== v21.1 主流 Agent 差异化能力补全（4 项 P0） =====
+// §B Spec-Driven Development（对标 GitHub Spec Kit）— spec/plan/tasks/checklist 四阶段工件流程
+import {
+  SpecDrivenDev,
+  getSpecDrivenToolDefinitions,
+  createSpecDrivenToolHandler,
+} from './spec-driven-dev.js';
+// §C Repo Map 重要性排序（对标 Aider RepoMap）— tree-sitter 符号评分 + 压缩上下文
+import {
+  RepoMap,
+  getRepoMapToolDefinitions,
+  createRepoMapToolHandler,
+} from './repo-map.js';
+// §D Plan Mode 可编辑计划（对标 Cursor Plan Mode）— 状态机 + 步骤追踪 + Markdown
+import {
+  PlanMode,
+  getPlanModeToolDefinitions,
+  createPlanModeToolHandler,
+} from './plan-mode.js';
+
 // ===== Phase 8: 路线图P0/P1/P2深度实现 =====
 import { ApprovalGate } from './approval-gate.js';
 import { EthicsReviewEngine } from './ethics-review-engine.js';
@@ -506,6 +526,12 @@ export interface CoreModules {
   fileContextEngine: FileContextEngine;
   /** v21.0 §4 异步任务托管管理器（任务队列 + 进度追踪 + 结果通知 + 中断恢复 + 并行任务） */
   asyncTaskManager: AsyncTaskManager;
+  /** v21.1 §B Spec-Driven Development 工件流程（spec/plan/tasks/checklist 四阶段） */
+  specDrivenDev: SpecDrivenDev;
+  /** v21.1 §C Repo Map 重要性排序（tree-sitter 符号评分 + 压缩上下文） */
+  repoMap: RepoMap;
+  /** v21.1 §D Plan Mode 可编辑计划（状态机 + 步骤追踪 + Markdown） */
+  planMode: PlanMode;
   modelRouter: ModelRouter;
   outputParser: StructuredOutputParser;
   /** P0 真实修复：虚拟内存工作流 — todo.md + 长文外接存储 */
@@ -1177,6 +1203,45 @@ ${ctxStr ? `对话上下文: "${ctxStr}"` : ''}
   });
   logger.info('v21.0 §4: 异步任务托管管理器已创建（maxConcurrent=3）', { module: 'Bootstrap' });
 
+  // ===== v21.1 主流 Agent 差异化能力补全（4 项 P0） =====
+
+  // §B Spec-Driven Development（对标 GitHub Spec Kit）
+  // spec/plan/tasks/checklist 四阶段工件流程，解决"氛围编程目标漂移"问题
+  let specDrivenDev: SpecDrivenDev;
+  try {
+    specDrivenDev = new SpecDrivenDev({ cwd: process.cwd() });
+    logger.info('v21.1 §B: Spec-Driven Development 模块已创建', { module: 'Bootstrap' });
+  } catch (err) {
+    specDrivenDev = new SpecDrivenDev();
+    logger.warn('v21.1 §B: Spec-Driven Development 使用默认配置', {
+      module: 'Bootstrap',
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  // §C Repo Map 重要性排序（对标 Aider RepoMap）
+  // 基于 tree-sitter 符号评分 + 压缩上下文，比暴力塞全文省 token 且更准
+  const repoMap = new RepoMap({
+    cwd: process.cwd(),
+    tokenBudget: 4096,
+    cacheTtlMs: 60000,
+    treeSitterAST: treeSitterAST ?? null,
+  });
+  logger.info('v21.1 §C: Repo Map 重要性排序模块已创建（tokenBudget=4096）', { module: 'Bootstrap' });
+
+  // §D Plan Mode 可编辑计划（对标 Cursor Plan Mode）
+  // 状态机 + 步骤追踪 + Markdown，先生成可编辑计划再执行
+  const planMode = new PlanMode();
+  try {
+    planMode.load();
+    logger.info('v21.1 §D: Plan Mode 可编辑计划模块已创建（已加载持久化数据）', { module: 'Bootstrap' });
+  } catch (err) {
+    logger.warn('v21.1 §D: Plan Mode 加载持久化数据失败（非致命）', {
+      module: 'Bootstrap',
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
   toolContext.projectContext = projectContext;
 
   const notificationService = new NotificationService();
@@ -1669,6 +1734,8 @@ ${ctxStr ? `对话上下文: "${ctxStr}"` : ''}
     projectConfig, projectMemoryLoader, codebaseIndexer, nativeDepsResolver, subAgentPresetRegistry, slashCommandRegistry, contextDiscoverer, multiFileEditor, toolPermissionRegistry, personaSystem, goalTracker, autonomousEngineer, documentParser, proactiveQuestionEngine, skillMarket, offlineCoordinator, learningProgressVisualizer, modelFineTuner, collaborationEngine,
     // v21.0 4 项 P0 升级模块
     enhancedLifecycleHookManager, agentsMdLoader, agentsMdInitializer, fileContextEngine, asyncTaskManager,
+    // v21.1 新增模块
+    specDrivenDev, repoMap, planMode,
     modelRouter, outputParser,
     // Phase 8
     approvalGate, ethicsReviewEngine, codeKnowledgeGraph, sotaBenchmarkScheduler, selfHealing, consistencyGuard, agentConfig, contextSelector,
@@ -2512,6 +2579,71 @@ export function createAgentLoop(
     logger.info('v21.0 §4: 异步任务托管工具已注册', { module: 'Bootstrap', count: asyncTaskToolDefs.length });
   } catch (e: unknown) {
     logger.warn('v21.0 §4: 异步任务托管工具注册失败', { module: 'Bootstrap', error: e instanceof Error ? e.message : String(e) });
+  }
+
+  // ===== v21.1 注册 3 项 P0 新模块的 LLM 工具 =====
+
+  // §B Spec-Driven Development 工具（spec_create/plan/tasks/implement/check/list/get）
+  try {
+    const specHandler = createSpecDrivenToolHandler(modules.specDrivenDev);
+    const specRawDefs = getSpecDrivenToolDefinitions();
+    const specToolDefs: ToolDef[] = specRawDefs.map(d => ({
+      name: d.name,
+      description: d.description,
+      parameters: {},
+      execute: async (args: Record<string, unknown>) => {
+        const result = await specHandler(d.name, args);
+        return typeof result === 'string' ? result : JSON.stringify(result);
+      },
+      readOnly: false,
+    }));
+    loop.registerTools(specToolDefs);
+    registeredCount += specToolDefs.length;
+    logger.info('v21.1 §B: Spec-Driven Development 工具已注册', { module: 'Bootstrap', count: specToolDefs.length });
+  } catch (e: unknown) {
+    logger.warn('v21.1 §B: Spec-Driven Development 工具注册失败', { module: 'Bootstrap', error: e instanceof Error ? e.message : String(e) });
+  }
+
+  // §C Repo Map 工具（repo_map_generate/query/symbols）
+  try {
+    const repoMapHandler = createRepoMapToolHandler(modules.repoMap);
+    const repoMapRawDefs = getRepoMapToolDefinitions();
+    const repoMapToolDefs: ToolDef[] = repoMapRawDefs.map(d => ({
+      name: d.name,
+      description: d.description,
+      parameters: {},
+      execute: async (args: Record<string, unknown>) => {
+        const result = await repoMapHandler(d.name, args);
+        return typeof result === 'string' ? result : JSON.stringify(result);
+      },
+      readOnly: false,
+    }));
+    loop.registerTools(repoMapToolDefs);
+    registeredCount += repoMapToolDefs.length;
+    logger.info('v21.1 §C: Repo Map 工具已注册', { module: 'Bootstrap', count: repoMapToolDefs.length });
+  } catch (e: unknown) {
+    logger.warn('v21.1 §C: Repo Map 工具注册失败', { module: 'Bootstrap', error: e instanceof Error ? e.message : String(e) });
+  }
+
+  // §D Plan Mode 工具（plan_create/update/confirm/cancel/list）
+  try {
+    const planModeHandler = createPlanModeToolHandler(modules.planMode);
+    const planModeRawDefs = getPlanModeToolDefinitions();
+    const planModeToolDefs: ToolDef[] = planModeRawDefs.map(d => ({
+      name: d.name,
+      description: d.description,
+      parameters: {},
+      execute: async (args: Record<string, unknown>) => {
+        const result = await planModeHandler(d.name, args);
+        return typeof result === 'string' ? result : JSON.stringify(result);
+      },
+      readOnly: false,
+    }));
+    loop.registerTools(planModeToolDefs);
+    registeredCount += planModeToolDefs.length;
+    logger.info('v21.1 §D: Plan Mode 工具已注册', { module: 'Bootstrap', count: planModeToolDefs.length });
+  } catch (e: unknown) {
+    logger.warn('v21.1 §D: Plan Mode 工具注册失败', { module: 'Bootstrap', error: e instanceof Error ? e.message : String(e) });
   }
 
   // 工作流工具：视频/测试/文档/图像生成

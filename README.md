@@ -1,9 +1,9 @@
-# 段先生 v21.0 — 自主进化超级智能体
+# 段先生 v21.1 — 自主进化超级智能体
 
 > **"I am J.A.R.V.I.S., your autonomous AI agent."**
 > 段先生是一个对标 OpenClaw + Codex CLI + ClawHub 体系的自主进化 AI 智能体系统。
 
-> **🚧 状态：Private Beta** — v21.0 主流 Agent 对标升级完成，4 项 P0 全部就绪。
+> **🚧 状态：Private Beta** — v21.1 主流 Agent 差异化能力补全完成，4 项 P0 全部就绪。
 
 ---
 
@@ -11,7 +11,7 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                       段先生 v21.0                           │
+│                       段先生 v21.1                           │
 ├─────────────────────────────────────────────────────────────┤
 │  CLI 终端  │  Web 控制台  │  Electron 桌面端                  │
 │            │  (移动端响应式) │  (Windows/macOS/Linux/UOS/麒麟)  │
@@ -59,6 +59,42 @@ npm run dev:desktop
 > **生产构建**：`npm run build:all && npm start`
 > **打包桌面安装包**：`npm run build:exe`
 > **构建分发安装包**：`node scripts/make-package.cjs`（明文源码模式，无需解密）
+
+## v21.1 升级亮点（主流 Agent 差异化能力补全 · 4 项 P0 全部完成）
+
+### P0-A：打通已有能力最后一公里
+补全 4 个已完整实现模块的工具元信息注册（20 个工具），让 LLM 在所有意图下都能看到这些工具：
+- `shadow-git.ts` — 4 个工具（checkpoint_create/restore/list/diff），对标 Gemini CLI /restore
+- `tree-sitter-ast.ts` — 6 个工具（ast_parse/project/usages/smells/structure/dependencies），对标 Aider Repo Map 解析
+- `code-knowledge-graph.ts` — 3 个工具（code_graph_query/stats/analyze），对标 Cursor 代码索引
+- `git-worktree.ts` — 7 个工具（worktree_create/remove/list/exec/merge/diff/sync），对标 Cursor 2.0 多 Agent 并行
+
+### P0-B：Spec-Driven Development（对标 GitHub Spec Kit）
+四阶段结构化任务工件流程，解决"氛围编程目标漂移"问题：
+- `/specify` → spec.md（需求规范）→ `/plan` → plan.md（技术方案）→ `/tasks` → tasks.md（任务清单）→ `/implement`
+- 项目宪法 `constitution.md` 持久化项目约束
+- Self Check 验证当前实现是否符合 spec 和 checklist
+- 7 个 LLM 工具：spec_create/plan/tasks/implement/check/list/get
+- 63 个单元测试全过
+
+### P0-C：Repo Map 重要性排序（对标 Aider RepoMap）
+基于 tree-sitter 符号评分的压缩上下文，比暴力塞全文省 token 且更准：
+- 符号重要性评分：被引用次数 × 2.0 + 导出 × 1.5 + 公共 API × 1.3 + 复杂度 × 0.8 - 文件大小惩罚 × 0.5
+- Token 预算控制（默认 4096 tokens），按重要性 Top-N 截断
+- 增量更新 + 60 秒缓存 + 优雅降级（WASM 不可用时用正则）
+- 3 个 LLM 工具：repo_map_generate/query/symbols
+- 54 个单元测试全过
+
+### P0-D：Plan Mode 可编辑计划（对标 Cursor Plan Mode）
+先生成可编辑 Markdown 计划，用户确认后再执行，避免方向跑偏：
+- 状态机：draft → reviewing → approved → executing → completed / rejected → draft
+- 步骤追踪：pending/in_progress/completed/skipped/failed + 自动进度计算
+- Markdown 双向转换：生成可读计划 + 从 Markdown 导入
+- 持久化到 `.duan/plans/<plan-id>.json`
+- 5 个 LLM 工具：plan_create/update/confirm/cancel/list
+- 98 个单元测试全过
+
+---
 
 ## v21.0 升级亮点（主流 Agent 对标 · 4 项 P0 全部完成）
 
@@ -147,8 +183,8 @@ npm run dev:desktop
 ### 📡 消息通道 + 团队协作
 对标 OpenClaw 的 `channels.*` 配置模式，支持飞书、Telegram、Discord、Slack、企业微信、钉钉、邮件、WhatsApp、Teams、QQ、微信公众号等通道。v20 新增协作引擎：团队成员管理、共享会话实时消息、任务派发（优先级/子任务/截止时间）、团队知识库（private/team/public 可见性）。
 
-### 🛠️ 180+ 内置工具
-浏览器自动操作、Shell 命令、文件系统、桌面控制、代码生成、网络搜索、视频生成等。其中 **44 个办公工具**采用四批分层架构（基础/扩展/进阶/终极）。v20 新增 80+ 工具：项目记忆管理、代码库语义搜索、斜杠命令、子代理派发、多文件编辑、许可管理、角色切换、目标追踪、文档解析、主动提问、技能市场、离线协调、进度可视化、模型微调、团队协作。v21 新增 19 个工具：Hooks 管理（5）、AGENTS.md 加载（3）、文件上下文引擎（4）、异步任务托管（7）。
+### 🛠️ 200+ 内置工具
+浏览器自动操作、Shell 命令、文件系统、桌面控制、代码生成、网络搜索、视频生成等。其中 **44 个办公工具**采用四批分层架构（基础/扩展/进阶/终极）。v20 新增 80+ 工具：项目记忆管理、代码库语义搜索、斜杠命令、子代理派发、多文件编辑、许可管理、角色切换、目标追踪、文档解析、主动提问、技能市场、离线协调、进度可视化、模型微调、团队协作。v21.0 新增 19 个工具：Hooks 管理（5）、AGENTS.md 加载（3）、文件上下文引擎（4）、异步任务托管（7）。v21.1 新增 35 个工具：补全 AST/Checkpoint/CodeGraph/Worktree 工具元信息（20）+ Spec-Driven（7）+ Repo Map（3）+ Plan Mode（5）。
 
 ### 🔄 自主进化 + 离线能力
 统一主循环（Plan/Execute/Reflect/Learn）自动分析任务质量，发现改进点并应用修复。v20 新增离线协调器：网络状态检测、本地模型检测（Ollama/llama.cpp）、离线模式自动切换、内置 10 条离线知识条目（TypeScript/Python/Git/Linux/正则/HTTP/SQL/Docker/npm/VSCode）。
@@ -185,7 +221,7 @@ npm run verify:all   # typecheck + lint + test
 # 单项验证
 npm run typecheck    # TypeScript 类型检查
 npm run lint         # ESLint 代码规范
-npm run test         # Vitest 单元测试（~3766 测试）
+npm run test         # Vitest 单元测试（~3981 测试）
 ```
 
 ## 安装包构建
