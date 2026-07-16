@@ -224,6 +224,8 @@ export class AuditLogger {
     this.flushInterval = setInterval(() => {
       void this.flush();
     }, 60000); // 每分钟刷新一次
+    // 防止定时器阻止进程优雅退出
+    if (typeof this.flushInterval.unref === 'function') this.flushInterval.unref();
   }
 
   /**

@@ -752,9 +752,10 @@ export class ToolExecutionPipeline {
             // code string (it would be undefined there, causing every sandboxed
             // tool call to fail). Apply timeout + output protection directly.
             const timeoutMs = 30000;
-            const timeoutPromise = new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error(`执行超时 (${timeoutMs}ms)`)), timeoutMs)
-            );
+            let timeoutId: ReturnType<typeof setTimeout>;
+            const timeoutPromise = new Promise<never>((_, reject) => {
+              timeoutId = setTimeout(() => reject(new Error(`执行超时 (${timeoutMs}ms)`)), timeoutMs);
+            });
             try {
               const raw = await Promise.race([executorFn(context.toolArgs), timeoutPromise]);
               const str = typeof raw === 'string' ? raw : JSON.stringify(raw);
@@ -762,6 +763,9 @@ export class ToolExecutionPipeline {
             } catch (e: unknown) {
               const msg = e instanceof Error ? e.message : '';
               return { action: 'block' as const, reason: msg || '沙箱执行失败' } as PipelineDecision;
+            } finally {
+              // 无论成功或失败，都清理超时 timer，避免成功路径下 timer 泄漏
+              clearTimeout(timeoutId!);
             }
             return { action: 'continue' } as PipelineDecision;
           }

@@ -719,6 +719,8 @@ class MCPClient {
       }
       })();
     }, intervalMs);
+    // 防止定时器阻止进程优雅退出
+    if (typeof this.heartbeatTimer.unref === 'function') this.heartbeatTimer.unref();
   }
 
   /** 停止心跳 */

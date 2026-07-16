@@ -742,16 +742,18 @@ export class FaultTolerantExecutor {
     }
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      // 提前声明 timeoutId，便于在 finally 中清理超时 timer
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
       try {
         // 带超时执行
         const result = await Promise.race([
           toolExecutor(step.toolName, step.args),
-          new Promise<never>((_, reject) =>
-            setTimeout(
+          new Promise<never>((_, reject) => {
+            timeoutId = setTimeout(
               () => reject(new Error(`Step timeout after ${step.timeout}ms`)),
               step.timeout,
-            ),
-          ),
+            );
+          }),
         ]);
 
         if (attempt > 0) {
@@ -815,6 +817,9 @@ export class FaultTolerantExecutor {
           this.stats.retriedSteps++;
           await this.sleep(delay);
         }
+      } finally {
+        // 无论成功或失败，都清理超时 timer，避免成功路径下 timer 泄漏
+        if (timeoutId) clearTimeout(timeoutId);
       }
     }
 

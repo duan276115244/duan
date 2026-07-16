@@ -509,6 +509,8 @@ export class ChannelManager {
         timestamp: Date.now(),
       });
     }, interval);
+    // 防止定时器阻止进程优雅退出
+    if (typeof timer.unref === 'function') timer.unref();
     this.heartbeatTimers.set(channelId, timer);
   }
 

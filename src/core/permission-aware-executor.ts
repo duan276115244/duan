@@ -69,6 +69,8 @@ export class PermissionAwareExecutor {
   }> = new Map();
   /** per-user 调用频率追踪 — Map<userId, timestamp[]> */
   private rateLimitTracker: Map<string, number[]> = new Map();
+  /** 审批超时 timer 句柄 — Map<requestId, setTimeout handle>，便于审批响应或 dispose 时清理 */
+  private approvalTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
 
   constructor(
     permissionManager: PermissionManager,
@@ -327,10 +329,11 @@ export class PermissionAwareExecutor {
 
       // 在实际 CLUI 中，这里会调用审批回调
       // 默认策略：如果配置时间内无响应，根据配置决定
-      setTimeout(() => {
+      const timer = setTimeout(() => {
         const request = this.approvalQueue.get(requestId);
         if (request) {
           this.approvalQueue.delete(requestId);
+          this.approvalTimers.delete(requestId);
           if (this.config.approvalStrategy === 'auto_deny') {
             resolve(false);
           } else {
@@ -339,6 +342,8 @@ export class PermissionAwareExecutor {
           }
         }
       }, this.config.approvalTimeoutMs);
+      // 保存 timer 句柄，便于审批响应或 dispose 时 clearTimeout
+      this.approvalTimers.set(requestId, timer);
 
       // 发布审批请求事件
       this.eventBus.emitSync('permission.approval.requested', {
@@ -356,6 +361,12 @@ export class PermissionAwareExecutor {
     const request = this.approvalQueue.get(requestId);
     if (!request) return false;
     this.approvalQueue.delete(requestId);
+    // 清理对应的审批超时 timer
+    const timer = this.approvalTimers.get(requestId);
+    if (timer) {
+      clearTimeout(timer);
+      this.approvalTimers.delete(requestId);
+    }
     request.resolve(approved);
     return true;
   }
@@ -414,5 +425,14 @@ export class PermissionAwareExecutor {
     if (hour >= 12 && hour < 18) return 'afternoon';
     if (hour >= 18 && hour < 23) return 'evening';
     return 'night';
+  }
+
+  /** 清理所有 pending 审批超时 timer，避免进程退出前 timer 泄漏 */
+  dispose(): void {
+    for (const timer of this.approvalTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.approvalTimers.clear();
+    this.approvalQueue.clear();
   }
 }

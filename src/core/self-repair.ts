@@ -295,6 +295,8 @@ export class SelfRepairSystem {
         this.log.error('健康检查失败', { error: err.message });
       });
     }, intervalMs);
+    // 防止定时器阻止进程优雅退出
+    if (typeof this.healthCheckTimer.unref === 'function') this.healthCheckTimer.unref();
   }
 
   /**

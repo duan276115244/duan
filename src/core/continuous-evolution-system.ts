@@ -569,6 +569,8 @@ export class ContinuousEvolutionSystem {
         this.log.error('每日进化周期失败', { error: String(e) });
       });
     }, dailyInterval);
+    // 防止定时器阻止进程优雅退出
+    if (typeof this.dailyTimer.unref === 'function') this.dailyTimer.unref();
     this.log.info('持续进化系统已启动', { nextCycle: '24h' });
   }
 

@@ -123,6 +123,8 @@ export class SelfLearningSystem {
   private readonly SAVE_THROTTLE_MS = 5000;
   /** 待保存标记 */
   private savePending: boolean = false;
+  /** 节流保存定时器句柄（dispose 时需清理） */
+  private saveTimer: ReturnType<typeof setTimeout> | null = null;
   /** Part G: 语义嵌入器（lazy 初始化，复用 smart-tool-selector 同款哈希向量） */
   private embedder?: SimpleEmbedder;
   private crossAttention?: CrossAttention;
@@ -156,12 +158,27 @@ export class SelfLearningSystem {
     } else if (!this.savePending) {
       this.savePending = true;
       // 延迟到节流间隔后保存
-      setTimeout(() => {
+      this.saveTimer = setTimeout(() => {
+        this.saveTimer = null;
         this.saveData();
         this.lastSaveTime = Date.now();
         this.savePending = false;
       }, this.SAVE_THROTTLE_MS - (now - this.lastSaveTime));
     }
+  }
+
+  /**
+   * 释放资源：清理 saveTimer + 强制落盘
+   *
+   * 测试中必须在删除临时目录前调用，否则 saveTimer 触发时写入已不存在的目录导致 ENOENT。
+   */
+  dispose(): void {
+    if (this.saveTimer) {
+      clearTimeout(this.saveTimer);
+      this.saveTimer = null;
+    }
+    this.savePending = false;
+    this.saveData();
   }
 
   // ========== 学习接口 ==========

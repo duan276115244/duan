@@ -133,6 +133,8 @@ export class SotaBenchmarkScheduler {
         this.log.error('调度挑战失败', { error: err instanceof Error ? err.message : String(err) });
       });
     }, this.config.intervalMs);
+    // 防止定时器阻止进程优雅退出
+    if (typeof this.timer.unref === 'function') this.timer.unref();
     this.log.info('SOTA 挑战调度已启动', {
       nextRunAt: new Date(this.nextScheduledAt).toISOString(),
       intervalDays: Math.round(this.config.intervalMs / (24 * 60 * 60 * 1000)),

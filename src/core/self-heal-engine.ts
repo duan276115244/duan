@@ -847,7 +847,9 @@ export class SelfHealingEngine {
       }
       })();
     }, intervalMs);
-    
+    // 防止定时器阻止进程优雅退出
+    if (typeof this.heartbeatInterval.unref === 'function') this.heartbeatInterval.unref();
+
     console.info(`[自愈引擎] 自动修复已启动，间隔: ${intervalMs/1000}秒`);
   }
 

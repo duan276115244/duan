@@ -411,6 +411,8 @@ ${fragmentsText}
         logger.warn('记忆抽取周期任务失败 — 记忆巩固链路中断', { error: err?.message });
       });
     }, this.config.extractIntervalMs);
+    // 防止定时器阻止进程优雅退出
+    if (typeof this.extractTimer.unref === 'function') this.extractTimer.unref();
   }
 
   stop(): void {

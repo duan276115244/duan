@@ -16,6 +16,9 @@ describe('GoalSystem', () => {
   });
 
   afterEach(() => {
+    // 必须先 dispose：清理 saveTimer + 移除 exit 监听器 + 强制落盘
+    // 否则 saveTimer 触发时写入已删除的临时目录导致 ENOENT
+    system.dispose();
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 

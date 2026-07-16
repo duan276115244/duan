@@ -444,6 +444,8 @@ export class RaftConsensus {
         commitIndex: this.commitIndex,
       });
     }, HEARTBEAT_INTERVAL_MS);
+    // 防止定时器阻止进程优雅退出
+    if (typeof this.heartbeatTimer.unref === 'function') this.heartbeatTimer.unref();
   }
 
   /** 启动选举定时器 */
@@ -999,6 +1001,8 @@ export class AgentClusterNode {
     this.faultDetectionTimer = setInterval(() => {
       this.checkNodeHealth();
     }, 5000); // 每 5 秒检查一次
+    // 防止定时器阻止进程优雅退出
+    if (typeof this.faultDetectionTimer.unref === 'function') this.faultDetectionTimer.unref();
 
     this.log.info('故障检测已启动', { interval: '5s', timeout: this.NODE_TIMEOUT_MS });
   }

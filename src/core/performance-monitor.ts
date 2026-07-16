@@ -149,6 +149,8 @@ export class PerformanceMonitor {
     this.monitorTimer = setInterval(() => {
       this.collectSystemMetrics();
     }, COLLECTION_INTERVAL_MS);
+    // 防止定时器阻止进程优雅退出
+    if (typeof this.monitorTimer.unref === 'function') this.monitorTimer.unref();
 
     // 首次立即采集
     this.collectSystemMetrics();

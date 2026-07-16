@@ -400,10 +400,13 @@ export class ToolOrchestrationEngine {
               return new Promise<string>((resolve) => {
                 let resolved = false;
                 let unsubscribe: (() => void) | null = null;
+                let timeoutTimer: ReturnType<typeof setTimeout> | null = null;
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const handler = (data: any) => {
                   if (data.toolName === toolName && !resolved) {
                     if (unsubscribe) unsubscribe();
+                    // 工具正常返回，清理 30s 超时 timer 避免泄漏
+                    if (timeoutTimer) clearTimeout(timeoutTimer);
                     resolved = true;
                     resolve(data.result || '');
                   }
@@ -411,7 +414,7 @@ export class ToolOrchestrationEngine {
                 unsubscribe = eventBus.on('tool.execute.result', handler);
                 eventBus.emitSync('tool.execute.request', { toolName, args: toolArgs });
                 // 超时保护
-                setTimeout(() => {
+                timeoutTimer = setTimeout(() => {
                   if (!resolved) {
                     if (unsubscribe) unsubscribe();
                     resolved = true;
@@ -461,17 +464,20 @@ export class ToolOrchestrationEngine {
                 return new Promise<string>((resolve) => {
                   let resolved = false;
                   let unsubscribe: (() => void) | null = null;
+                  let timeoutTimer: ReturnType<typeof setTimeout> | null = null;
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   const handler = (data: any) => {
                     if (data.toolName === toolName && !resolved) {
                       if (unsubscribe) unsubscribe();
+                      // 工具正常返回，清理 30s 超时 timer 避免泄漏
+                      if (timeoutTimer) clearTimeout(timeoutTimer);
                       resolved = true;
                       resolve(data.result || '');
                     }
                   };
                   unsubscribe = eventBus.on('tool.execute.result', handler);
                   eventBus.emitSync('tool.execute.request', { toolName, args: toolArgs });
-                  setTimeout(() => {
+                  timeoutTimer = setTimeout(() => {
                     if (!resolved) {
                       if (unsubscribe) unsubscribe();
                       resolved = true;

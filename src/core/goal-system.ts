@@ -36,13 +36,16 @@ export class GoalSystem {
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
   private batchDepth = 0;
   private readonly saveDelayMs = 200;
+  // 保存 exit 监听器引用以便 dispose 时移除（避免测试中累积监听器）
+  private readonly exitListener: () => void;
 
   constructor(dbPath?: string) {
     this.dbPath = dbPath || path.join(process.cwd(), '.awareness', 'goals.json');
     fs.mkdirSync(path.dirname(this.dbPath), { recursive: true });
     this.load();
     // 进程退出时确保未写入的变更被持久化
-    process.once('exit', () => this.flush());
+    this.exitListener = () => this.flush();
+    process.once('exit', this.exitListener);
   }
 
   private load(): void {
@@ -82,6 +85,17 @@ export class GoalSystem {
     if (!this.dirty) return;
     this.writeToDisk();
     this.dirty = false;
+  }
+
+  /**
+   * 释放资源：清理 saveTimer + 移除 exit 监听器 + 强制落盘
+   *
+   * 测试中必须在删除临时目录前调用，否则 saveTimer 触发时写入已不存在的目录导致 ENOENT。
+   * 同时移除 process.once('exit') 监听器避免测试中累积监听器导致内存泄漏。
+   */
+  dispose(): void {
+    this.flush();
+    process.removeListener('exit', this.exitListener);
   }
 
   private generateId(): string {

@@ -708,6 +708,8 @@ export class OfflineCoordinator {
         this.log.warn('周期探测失败', { error: err instanceof Error ? err.message : String(err) });
       });
     }, intervalMs);
+    // 防止定时器阻止进程优雅退出
+    if (typeof this.monitorTimer.unref === 'function') this.monitorTimer.unref();
     this.log.info('网络监测已启动', { intervalMs });
   }
 

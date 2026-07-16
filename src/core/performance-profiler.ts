@@ -265,6 +265,8 @@ export class PerformanceProfiler {
     this.memoryMonitorTimer = setInterval(() => {
       this.takeMemorySnapshot();
     }, intervalMs);
+    // 防止定时器阻止进程优雅退出
+    if (typeof this.memoryMonitorTimer.unref === 'function') this.memoryMonitorTimer.unref();
   }
 
   /**

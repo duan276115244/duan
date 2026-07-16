@@ -241,6 +241,8 @@ export class SelfAssessment {
       // 仅在定时自动评估时持久化
       void this.flushPersist();
     }, intervalMs);
+    // 防止定时器阻止进程优雅退出
+    if (typeof this.assessmentTimer.unref === 'function') this.assessmentTimer.unref();
 
     // 立即执行一次
     this.runAutoAssessment();

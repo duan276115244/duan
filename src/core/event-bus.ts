@@ -318,6 +318,8 @@ export class EventBus {
       void this.flushBatch(event.type);
     } else if (!batched.timer) {
       batched.timer = setTimeout(() => void this.flushBatch(event.type), config.intervalMs);
+      // 防止定时器阻止进程优雅退出
+      if (typeof batched.timer.unref === 'function') batched.timer.unref();
     }
   }
 
@@ -412,6 +414,8 @@ export class EventBus {
         unsub();
         reject(new Error(`Event "${type}" timeout after ${timeoutMs}ms`));
       }, timeoutMs);
+      // 防止定时器阻止进程优雅退出
+      if (typeof timer.unref === 'function') timer.unref();
     });
   }
 

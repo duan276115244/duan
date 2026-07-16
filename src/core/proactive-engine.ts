@@ -285,6 +285,8 @@ export class ProactiveEngine {
     this.checkTimer = setInterval(() => {
       this.checkTimedTriggers();
     }, 60000);
+    // 防止定时器阻止进程优雅退出
+    if (typeof this.checkTimer.unref === 'function') this.checkTimer.unref();
   }
 
   stop(): void {

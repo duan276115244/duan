@@ -399,6 +399,8 @@ export class ConsciousnessSystem {
     this.thoughtLoopTimer = setInterval(() => {
       this.autonomousThink();
     }, intervalMs);
+    // 防止定时器阻止进程优雅退出
+    if (typeof this.thoughtLoopTimer.unref === 'function') this.thoughtLoopTimer.unref();
   }
 
   /**

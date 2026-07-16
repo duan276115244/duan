@@ -34,6 +34,8 @@ describe('SelfLearningSystem', () => {
   });
 
   afterEach(() => {
+    // 必须先 dispose：清理 saveTimer + 强制落盘，否则 saveTimer 触发时写入已删除目录
+    sls.dispose();
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 

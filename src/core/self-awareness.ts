@@ -49,6 +49,10 @@ export class SelfAwareness {
   private dirty = false;
   private flushTimer: NodeJS.Timeout | null = null;
   private readonly flushDelay = 1000;
+  // 保存监听器引用以便 dispose 时移除（避免测试中累积监听器）
+  private readonly exitListener: () => void;
+  private readonly sigintListener: () => void;
+  private readonly sigtermListener: () => void;
 
   constructor() {
     this.dbPath = path.join(process.cwd(), '.awareness');
@@ -58,10 +62,12 @@ export class SelfAwareness {
     this.loadFromWorkspaceFiles();
 
     // 进程退出时确保脏数据落盘
-    const flushOnExit = () => this.flush();
-    process.once('exit', flushOnExit);
-    process.once('SIGINT', () => { flushOnExit(); process.exit(0); });
-    process.once('SIGTERM', () => { flushOnExit(); process.exit(0); });
+    this.exitListener = () => this.flush();
+    this.sigintListener = () => { this.flush(); process.exit(0); };
+    this.sigtermListener = () => { this.flush(); process.exit(0); };
+    process.once('exit', this.exitListener);
+    process.once('SIGINT', this.sigintListener);
+    process.once('SIGTERM', this.sigtermListener);
   }
 
   private loadFromWorkspaceFiles(): void {
@@ -169,6 +175,18 @@ export class SelfAwareness {
     this.model.uptime = this.model.uptime + (Date.now() - this.model.uptime > 0 ? 0 : 0);
     atomicWriteJsonSync(path.join(this.dbPath, 'self-model.json'), this.model);
     atomicWriteJsonSync(path.join(this.dbPath, 'insights.json'), this.insights.slice(-200));
+  }
+
+  /**
+   * 释放资源：清理 flushTimer + 移除进程事件监听器 + 强制落盘
+   *
+   * 测试中应调用此方法避免 process.once 监听器累积导致内存泄漏。
+   */
+  dispose(): void {
+    this.flush();
+    process.removeListener('exit', this.exitListener);
+    process.removeListener('SIGINT', this.sigintListener);
+    process.removeListener('SIGTERM', this.sigtermListener);
   }
 
   getName(): string { return this.model.name; }
