@@ -548,9 +548,10 @@ describe('LifecycleHookManager', () => {
       expect(laterSpy).not.toHaveBeenCalled();
     });
 
-    it('LifecycleEvent 枚举包含全部 11 个事件', () => {
+    it('LifecycleEvent 枚举包含全部 16 个事件（v20 基础 11 个 + v21 新增 5 个）', () => {
       const events = Object.values(LifecycleEvent);
-      expect(events).toHaveLength(11);
+      expect(events).toHaveLength(16);
+      // v20 基础事件（11 个）
       expect(LifecycleEvent.ON_LLM_REQUEST).toBe('on_llm_request');
       expect(LifecycleEvent.ON_LLM_RESPONSE).toBe('on_llm_response');
       expect(LifecycleEvent.ON_TOOL_CALL).toBe('on_tool_call');
@@ -562,6 +563,12 @@ describe('LifecycleHookManager', () => {
       expect(LifecycleEvent.ON_CONTEXT_COMPRESS).toBe('on_context_compress');
       expect(LifecycleEvent.ON_SUBAGENT_DISPATCH).toBe('on_subagent_dispatch');
       expect(LifecycleEvent.ON_SUBAGENT_RESULT).toBe('on_subagent_result');
+      // v21 新增事件（5 个，对标 Claude Code Hooks）
+      expect(LifecycleEvent.ON_USER_PROMPT_SUBMIT).toBe('on_user_prompt_submit');
+      expect(LifecycleEvent.ON_STOP).toBe('on_stop');
+      expect(LifecycleEvent.ON_PRE_COMPACT).toBe('on_pre_compact');
+      expect(LifecycleEvent.ON_SUBAGENT_START).toBe('on_subagent_start');
+      expect(LifecycleEvent.ON_SUBAGENT_STOP).toBe('on_subagent_stop');
     });
 
     it('trigger 不修改原始 data 对象（内部使用副本）', async () => {

@@ -1,10 +1,10 @@
 @echo off
-title Duan Agent v20 - Web Console
+title Duan Agent v21 - Web Console
 setlocal
 
 echo.
 echo ========================================
-echo    Duan Agent v20 - Web Console
+echo    Duan Agent v21 - Web Console
 echo ========================================
 echo.
 echo Starting web service...

@@ -43,6 +43,17 @@ export enum LifecycleEvent {
   ON_SUBAGENT_DISPATCH = 'on_subagent_dispatch',
   /** 子 Agent 完成后 */
   ON_SUBAGENT_RESULT = 'on_subagent_result',
+  // ===== v21 新增事件（对标 Claude Code Hooks） =====
+  /** 用户提交 prompt 时触发（自动注入项目上下文） */
+  ON_USER_PROMPT_SUBMIT = 'on_user_prompt_submit',
+  /** 任务完成时触发（发送系统通知） */
+  ON_STOP = 'on_stop',
+  /** 上下文压缩前触发（注入关键信息） */
+  ON_PRE_COMPACT = 'on_pre_compact',
+  /** 子 Agent 启动时触发（全链路追踪开始） */
+  ON_SUBAGENT_START = 'on_subagent_start',
+  /** 子 Agent 结束时触发（全链路追踪结束） */
+  ON_SUBAGENT_STOP = 'on_subagent_stop',
 }
 
 // ============ 类型定义 ============
@@ -66,7 +77,10 @@ export type HookResult =
   | { action: 'block'; reason: string }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   | { action: 'modify'; modifiedData: Record<string, any>; reason: string }
-  | { action: 'delay'; ms: number; reason: string };
+  | { action: 'delay'; ms: number; reason: string }
+  // v21 新增：对标 Claude Code updatedInput，允许钩子修改 AI 原始命令
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  | { action: 'update'; updatedInput: Record<string, any>; reason: string };
 
 /** 钩子处理器 */
 export interface HookHandler {
@@ -85,6 +99,9 @@ export interface TriggerResult {
   /** 修改后的数据（如有 modify 操作） */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   modifiedData?: Record<string, any>;
+  /** 更新后的原始输入（如有 update 操作，对标 Claude Code updatedInput） */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  updatedInput?: Record<string, any>;
   /** 被阻止的原因（如有 block 操作） */
   blockedReason?: string;
 }
@@ -136,6 +153,9 @@ export class LifecycleHookManager {
 
     // 当前数据（可能被 modify 钩子修改）
     let currentData = { ...data };
+    // v21：updatedInput 记录（对标 Claude Code updatedInput）
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let updatedInput: Record<string, any> = {};
 
     for (const hookHandler of sorted) {
       const context: HookContext = {
@@ -173,6 +193,13 @@ export class LifecycleHookManager {
           // 等待指定时间后继续
           await this.sleep(result.ms);
           break;
+
+        case 'update':
+          // v21 新增：对标 Claude Code updatedInput，修改 AI 原始命令
+          // 合并到 currentData 并记录到 updatedInput
+          currentData = { ...currentData, ...result.updatedInput };
+          updatedInput = { ...updatedInput, ...result.updatedInput };
+          break;
       }
     }
 
@@ -184,6 +211,7 @@ export class LifecycleHookManager {
     return {
       allowed: true,
       modifiedData: dataModified ? currentData : undefined,
+      updatedInput: Object.keys(updatedInput).length > 0 ? updatedInput : undefined,
     };
   }
 

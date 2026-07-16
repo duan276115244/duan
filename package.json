@@ -1,7 +1,7 @@
 {
   "name": "duan-xiansheng",
-  "version": "20.0.0",
-  "description": "Duan Agent v20 - Super AI Assistant (J.A.R.V.I.S.) - Self-evolving autonomous agent with collaboration, fine-tuning, offline capabilities",
+  "version": "21.0.0",
+  "description": "Duan Agent v21 - Super AI Assistant (J.A.R.V.I.S.) - Hooks lifecycle + AGENTS.md memory + File-as-interface context + Async task orchestration",
   "type": "module",
   "bin": {
     "duan": "dist/entry.js"

@@ -407,6 +407,37 @@ const BUILTIN_TOOL_METAS: ToolMeta[] = [
   { name: 'note_manage', category: 'memory', risk: 'moderate', keywords: ['笔记', '知识', '管理', 'Markdown', '标签', '双链', 'note', 'knowledge', 'obsidian', '搜索'] },
   { name: 'kanban_board', category: 'plan', risk: 'safe', keywords: ['看板', 'kanban', '卡片', '列', '泳道', '状态', 'board', 'trello', '拖拽'] },
   { name: 'automation_workflow', category: 'execute', risk: 'moderate', keywords: ['工作流', '自动化', '定时', '触发器', '动作链', 'workflow', 'automation', 'cron', 'schedule', '编排'] },
+
+  // ===== v21.0 §1 Hooks 生命周期工具（三步注册第 3 步）=====
+  // 缺失时钩子管理在非 self_modify 意图下被过滤，LLM 看不到 hooks_* 工具
+  { name: 'hooks_list', category: 'read', risk: 'safe', keywords: ['钩子', '生命周期', '列表', 'hooks', 'lifecycle', '事件', '已注册'] },
+  { name: 'hooks_register', category: 'write', risk: 'moderate', keywords: ['钩子', '注册', '添加', 'hooks', 'register', '订阅', '监听'] },
+  { name: 'hooks_unregister', category: 'write', risk: 'moderate', keywords: ['钩子', '取消', '移除', 'hooks', 'unregister', '注销'] },
+  { name: 'hooks_config_get', category: 'read', risk: 'safe', keywords: ['钩子', '配置', '查询', 'hooks', 'config', 'settings'] },
+  { name: 'hooks_config_set', category: 'write', risk: 'moderate', keywords: ['钩子', '配置', '设置', 'hooks', 'config', 'settings', '更新'] },
+
+  // ===== v21.0 §2 AGENTS.md 三层记忆工具 =====
+  // 缺失时 AGENTS.md 加载/初始化在非 file/memory 意图下被过滤
+  { name: 'agents_md_load', category: 'read', risk: 'safe', keywords: ['AGENTS', 'md', '加载', '记忆', '规则', '约束', 'agents', 'load', '项目规范'] },
+  { name: 'agents_md_init', category: 'write', risk: 'moderate', keywords: ['AGENTS', 'md', '初始化', '生成', '创建', 'agents', 'init', 'starter', '项目规范'] },
+  { name: 'agents_md_list', category: 'read', risk: 'safe', keywords: ['AGENTS', 'md', '列表', '层级', 'agents', 'list', '所有层级'] },
+
+  // ===== v21.0 §3 文件即接口上下文工具 =====
+  // 缺失时上下文文件化统计/搜索/清理在非 mixed 意图下被过滤
+  { name: 'file_context_stats', category: 'read', risk: 'safe', keywords: ['上下文', '文件', '统计', 'file', 'context', 'stats', 'Token', '节省'] },
+  { name: 'file_context_search', category: 'search', risk: 'safe', keywords: ['上下文', '文件', '搜索', '历史', 'file', 'context', 'search', 'grep'] },
+  { name: 'file_context_history_list', category: 'read', risk: 'safe', keywords: ['上下文', '历史', '列表', 'file', 'context', 'history', '记录'] },
+  { name: 'file_context_cleanup', category: 'execute', risk: 'moderate', keywords: ['上下文', '文件', '清理', '释放', 'file', 'context', 'cleanup', 'clear'] },
+
+  // ===== v21.0 §4 异步任务托管工具 =====
+  // 缺失时异步任务提交/查询/取消在非 mixed 意图下被过滤，LLM 看不到 async_task_* 工具
+  { name: 'async_task_submit', category: 'execute', risk: 'moderate', keywords: ['异步', '任务', '提交', '后台', 'async', 'task', 'submit', '队列', '托管'] },
+  { name: 'async_task_status', category: 'read', risk: 'safe', keywords: ['异步', '任务', '状态', '进度', 'async', 'task', 'status', '查询'] },
+  { name: 'async_task_list', category: 'read', risk: 'safe', keywords: ['异步', '任务', '列表', 'async', 'task', 'list', '所有任务'] },
+  { name: 'async_task_cancel', category: 'execute', risk: 'moderate', keywords: ['异步', '任务', '取消', '终止', 'async', 'task', 'cancel', 'abort'] },
+  { name: 'async_task_logs', category: 'read', risk: 'safe', keywords: ['异步', '任务', '日志', 'async', 'task', 'logs', '输出'] },
+  { name: 'async_task_templates', category: 'read', risk: 'safe', keywords: ['异步', '任务', '模板', 'async', 'task', 'templates', '预定义'] },
+  { name: 'async_task_stats', category: 'read', risk: 'safe', keywords: ['异步', '任务', '统计', 'async', 'task', 'stats', '汇总'] },
 ];
 
 // ============ 意图→工具类别映射 ============
@@ -523,7 +554,9 @@ const INTENT_KEYWORDS: Record<TaskIntent, { keywords: string[]; weight: number }
       // v20.0 §5.1: 多模态文档解析关键词——PDF/Word/Excel/PPT 解析属 file 意图
       '解析文档', '文档内容', '读取文档', '文档提取', '提取文本', '解析表格',
       'Word', 'word', 'docx', 'PPT', 'ppt', 'pptx', 'docx', 'xlsx',
-      '批量解析', '目录文档', '批量文档', '文档类型', '支持的格式'],
+      '批量解析', '目录文档', '批量文档', '文档类型', '支持的格式',
+      // v21.0 §2: AGENTS.md 三层记忆体系属 file 意图（项目规范加载/初始化）
+      'AGENTS.md', 'AGENTS', '项目规范', '项目规则', '项目约束', 'agents md'],
     weight: 1.0,
   },
   chat: {
@@ -538,12 +571,19 @@ const INTENT_KEYWORDS: Record<TaskIntent, { keywords: string[]; weight: number }
   },
   self_modify: {
     keywords: ['自我进化', '自我修改', '自我修复', '自愈', '升级自己', '改进自己', '进化',
-      'self-evolve', 'self-modify', 'self-heal', 'self-improve', '自身能力', '技能学习'],
+      'self-evolve', 'self-modify', 'self-heal', 'self-improve', '自身能力', '技能学习',
+      // v21.0 §1: Hooks 生命周期管理属自我修改范畴
+      '钩子', 'hooks', 'lifecycle', '生命周期', '钩子管理', '钩子配置'],
     weight: 1.2,
   },
   mixed: {
     keywords: ['同时', '并且', '以及', '还有', '另外', '然后', '接着',
-      'and', 'also', 'plus', 'then', 'next', '组合', '多个'],
+      'and', 'also', 'plus', 'then', 'next', '组合', '多个',
+      // v21.0 §3: 文件即接口上下文管理属 mixed 意图（统计/搜索/清理跨多类）
+      '上下文文件', '上下文统计', '上下文搜索', '上下文清理', 'file context',
+      // v21.0 §4: 异步任务托管属 mixed 意图（后台任务跨多类）
+      '异步任务', '后台任务', 'async task', '任务队列', '任务托管', '任务进度',
+      '任务取消', '任务日志', '任务模板', '任务统计'],
     weight: 0.3,
   },
 };

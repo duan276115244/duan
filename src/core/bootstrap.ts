@@ -212,6 +212,34 @@ import { CollaborationEngine } from './collaboration-engine.js';
 import { ModelRouter } from './model-router.js';
 import { StructuredOutputParser } from './structured-output-parser.js';
 
+// ===== v21.0 主流 Agent 对标升级（4 项 P0） =====
+// §1 Hooks 生命周期系统增强（对标 Claude Code）— 6 新内置钩子 + 5 新事件 + update 动作
+import {
+  createEnhancedLifecycleHookManager,
+  getHooksToolDefinitions,
+  createHooksToolHandler,
+} from './lifecycle-hooks-v21.js';
+import type { LifecycleHookManager } from './lifecycle-hooks.js';
+// §2 AGENTS.md 三层记忆体系（对标 Codex CLI）— 全局/项目/子目录 override
+import {
+  AgentsMdLoader,
+  AgentsMdInitializer,
+  getAgentsMdToolDefinitions,
+  createAgentsMdToolHandler,
+} from './agents-md-loader.js';
+// §3 文件即接口上下文工程（对标 Cursor）— 工具结果 >4KB 文件化 + 摘要 + 历史引用
+import {
+  FileContextEngine,
+  getFileContextToolDefinitions,
+  createFileContextToolHandler,
+} from './file-context-engine.js';
+// §4 异步任务托管模式（对标 Devin）— 任务队列 + 进度追踪 + 结果通知 + 中断恢复
+import {
+  AsyncTaskManager,
+  getAsyncTaskToolDefinitions,
+  createAsyncTaskToolHandler,
+} from './async-task-manager.js';
+
 // ===== Phase 8: 路线图P0/P1/P2深度实现 =====
 import { ApprovalGate } from './approval-gate.js';
 import { EthicsReviewEngine } from './ethics-review-engine.js';
@@ -468,6 +496,16 @@ export interface CoreModules {
   modelFineTuner: ModelFineTuner;
   /** v20.0 §5.3 协作能力（团队管理/共享会话/任务派发/团队知识库） */
   collaborationEngine: CollaborationEngine;
+  /** v21.0 §1 增强版生命周期钩子管理器（6 新内置钩子 + 5 新事件 + update 动作） */
+  enhancedLifecycleHookManager: LifecycleHookManager | null;
+  /** v21.0 §2 AGENTS.md 三层记忆加载器（全局/项目/子目录 override，向上递归查找） */
+  agentsMdLoader: AgentsMdLoader;
+  /** v21.0 §2 AGENTS.md 初始化器（扫描项目结构生成 starter AGENTS.md） */
+  agentsMdInitializer: AgentsMdInitializer;
+  /** v21.0 §3 文件即接口上下文引擎（工具结果 >4KB 文件化 + 摘要 + 历史引用） */
+  fileContextEngine: FileContextEngine;
+  /** v21.0 §4 异步任务托管管理器（任务队列 + 进度追踪 + 结果通知 + 中断恢复 + 并行任务） */
+  asyncTaskManager: AsyncTaskManager;
   modelRouter: ModelRouter;
   outputParser: StructuredOutputParser;
   /** P0 真实修复：虚拟内存工作流 — todo.md + 长文外接存储 */
@@ -1075,6 +1113,70 @@ ${ctxStr ? `对话上下文: "${ctxStr}"` : ''}
   } catch (err: unknown) {
     logger.warn('CollaborationEngine 初始化失败（非致命）', { error: err instanceof Error ? err.message : String(err) });
   }
+
+  // ===== v21.0 主流 Agent 对标升级（4 项 P0） =====
+
+  // §1 Hooks 生命周期系统增强（对标 Claude Code）
+  // 6 新内置钩子 + 5 新事件 + update 动作
+  // 默认开启全部 6 个新钩子，可通过 options 关闭单项
+  let enhancedLifecycleHookManager: LifecycleHookManager | null = null;
+  try {
+    const enhancedHooks = createEnhancedLifecycleHookManager({
+      cwd: process.cwd(),
+      enableProjectContext: true,
+      enableStopNotification: true,
+      enablePreCompactGit: true,
+      enableAutoFormat: true,
+      enableDangerousCommandBlock: true,
+      enablePromptSafety: true,
+    });
+    enhancedLifecycleHookManager = enhancedHooks.manager;
+    logger.info('v21.0 §1: 增强版生命周期钩子管理器已创建（6 新内置钩子 + 5 新事件 + update 动作）', {
+      module: 'Bootstrap',
+      hooksCount: enhancedHooks.manager.getHooks().length,
+    });
+  } catch (err: unknown) {
+    logger.warn('v21.0 §1: 增强版生命周期钩子管理器创建失败（非致命）', {
+      module: 'Bootstrap',
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  // §2 AGENTS.md 三层记忆体系（对标 Codex CLI）
+  // 全局/项目/子目录 override，向上递归查找，冲突时深层覆盖浅层
+  const agentsMdLoader = new AgentsMdLoader();
+  const agentsMdInitializer = new AgentsMdInitializer();
+  logger.info('v21.0 §2: AGENTS.md 三层记忆加载器已创建', { module: 'Bootstrap' });
+
+  // §3 文件即接口上下文工程（对标 Cursor）
+  // 工具结果 >4KB 文件化 + 摘要（前 500 + tail 200）+ 历史引用
+  // 节省 40%+ Token，超长上下文不再撑爆 LLM 上下文窗口
+  let fileContextEngine: FileContextEngine;
+  try {
+    fileContextEngine = new FileContextEngine({
+      threshold: 4096, // 4KB
+      summaryHead: 500,
+      summaryTail: 200,
+      maxFiles: 100,
+    });
+    logger.info('v21.0 §3: 文件即接口上下文引擎已创建（阈值 4KB，最大 100 文件）', { module: 'Bootstrap' });
+  } catch (err: unknown) {
+    // 降级：使用默认配置
+    fileContextEngine = new FileContextEngine();
+    logger.warn('v21.0 §3: 文件即接口上下文引擎使用默认配置', {
+      module: 'Bootstrap',
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  // §4 异步任务托管模式（对标 Devin）
+  // 任务队列 + 进度追踪 + 结果通知 + 中断恢复 + 并行任务 + 任务模板
+  // 用户可"分配任务后去做别的"，适合长耗时任务（代码审查/批量测试/文档生成/大规模重构）
+  const asyncTaskManager = new AsyncTaskManager({
+    maxConcurrent: 3,
+  });
+  logger.info('v21.0 §4: 异步任务托管管理器已创建（maxConcurrent=3）', { module: 'Bootstrap' });
+
   toolContext.projectContext = projectContext;
 
   const notificationService = new NotificationService();
@@ -1564,7 +1666,10 @@ ${ctxStr ? `对话上下文: "${ctxStr}"` : ''}
     handoffSystem, diffEditor, guardrailSystem, traceCollector,
     virtualMemoryWorkflow,
     brain,
-    projectConfig, projectMemoryLoader, codebaseIndexer, nativeDepsResolver, subAgentPresetRegistry, slashCommandRegistry, contextDiscoverer, multiFileEditor, toolPermissionRegistry, personaSystem, goalTracker, autonomousEngineer, documentParser, proactiveQuestionEngine, skillMarket, offlineCoordinator, learningProgressVisualizer, modelFineTuner, collaborationEngine, modelRouter, outputParser,
+    projectConfig, projectMemoryLoader, codebaseIndexer, nativeDepsResolver, subAgentPresetRegistry, slashCommandRegistry, contextDiscoverer, multiFileEditor, toolPermissionRegistry, personaSystem, goalTracker, autonomousEngineer, documentParser, proactiveQuestionEngine, skillMarket, offlineCoordinator, learningProgressVisualizer, modelFineTuner, collaborationEngine,
+    // v21.0 4 项 P0 升级模块
+    enhancedLifecycleHookManager, agentsMdLoader, agentsMdInitializer, fileContextEngine, asyncTaskManager,
+    modelRouter, outputParser,
     // Phase 8
     approvalGate, ethicsReviewEngine, codeKnowledgeGraph, sotaBenchmarkScheduler, selfHealing, consistencyGuard, agentConfig, contextSelector,
     // 三大核心功能模块
@@ -2317,6 +2422,96 @@ export function createAgentLoop(
     registeredCount += discoveryToolDefs.length;
   } catch (e: unknown) {
     logger.warn('skillDiscovery 工具注册失败', { module: 'Bootstrap', error: e instanceof Error ? e.message : String(e) });
+  }
+
+  // ===== v21.0 注册 4 项 P0 升级模块的 LLM 工具 =====
+  // 这些模块的工具定义使用 inputSchema（JSON Schema）且 handler 独立，
+  // 需要绑定 execute 函数后才能注册到 EnhancedAgentLoop
+
+  // §1 Hooks 生命周期工具（hooks_list/register/unregister/config_get/config_set）
+  if (modules.enhancedLifecycleHookManager) {
+    try {
+      const hooksHandler = createHooksToolHandler(modules.enhancedLifecycleHookManager);
+      const hooksRawDefs = getHooksToolDefinitions();
+      const hooksToolDefs: ToolDef[] = hooksRawDefs.map(d => ({
+        name: d.name,
+        description: d.description,
+        parameters: {},
+        execute: async (args: Record<string, unknown>) => {
+          const result = await hooksHandler(d.name, args);
+          return typeof result === 'string' ? result : JSON.stringify(result);
+        },
+        readOnly: false,
+      }));
+      loop.registerTools(hooksToolDefs);
+      registeredCount += hooksToolDefs.length;
+      logger.info('v21.0 §1: Hooks 生命周期工具已注册', { module: 'Bootstrap', count: hooksToolDefs.length });
+    } catch (e: unknown) {
+      logger.warn('v21.0 §1: Hooks 生命周期工具注册失败', { module: 'Bootstrap', error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+
+  // §2 AGENTS.md 工具（agents_md_load/agents_md_init/agents_md_list）
+  try {
+    const agentsMdHandler = createAgentsMdToolHandler();
+    const agentsMdRawDefs = getAgentsMdToolDefinitions();
+    const agentsMdToolDefs: ToolDef[] = agentsMdRawDefs.map(d => ({
+      name: d.name,
+      description: d.description,
+      parameters: {},
+      execute: async (args: Record<string, unknown>) => {
+        const result = await agentsMdHandler(d.name, args);
+        return typeof result === 'string' ? result : JSON.stringify(result);
+      },
+      readOnly: false,
+    }));
+    loop.registerTools(agentsMdToolDefs);
+    registeredCount += agentsMdToolDefs.length;
+    logger.info('v21.0 §2: AGENTS.md 工具已注册', { module: 'Bootstrap', count: agentsMdToolDefs.length });
+  } catch (e: unknown) {
+    logger.warn('v21.0 §2: AGENTS.md 工具注册失败', { module: 'Bootstrap', error: e instanceof Error ? e.message : String(e) });
+  }
+
+  // §3 文件即接口上下文工具（file_context_stats/search/history_list/cleanup）
+  try {
+    const fileCtxHandler = createFileContextToolHandler(modules.fileContextEngine);
+    const fileCtxRawDefs = getFileContextToolDefinitions();
+    const fileCtxToolDefs: ToolDef[] = fileCtxRawDefs.map(d => ({
+      name: d.name,
+      description: d.description,
+      parameters: {},
+      execute: async (args: Record<string, unknown>) => {
+        const result = await fileCtxHandler(d.name, args);
+        return typeof result === 'string' ? result : JSON.stringify(result);
+      },
+      readOnly: false,
+    }));
+    loop.registerTools(fileCtxToolDefs);
+    registeredCount += fileCtxToolDefs.length;
+    logger.info('v21.0 §3: 文件即接口上下文工具已注册', { module: 'Bootstrap', count: fileCtxToolDefs.length });
+  } catch (e: unknown) {
+    logger.warn('v21.0 §3: 文件即接口上下文工具注册失败', { module: 'Bootstrap', error: e instanceof Error ? e.message : String(e) });
+  }
+
+  // §4 异步任务托管工具（async_task_submit/status/list/cancel/logs/templates/stats）
+  try {
+    const asyncTaskHandler = createAsyncTaskToolHandler(modules.asyncTaskManager);
+    const asyncTaskRawDefs = getAsyncTaskToolDefinitions();
+    const asyncTaskToolDefs: ToolDef[] = asyncTaskRawDefs.map(d => ({
+      name: d.name,
+      description: d.description,
+      parameters: {},
+      execute: async (args: Record<string, unknown>) => {
+        const result = await asyncTaskHandler(d.name, args);
+        return typeof result === 'string' ? result : JSON.stringify(result);
+      },
+      readOnly: false,
+    }));
+    loop.registerTools(asyncTaskToolDefs);
+    registeredCount += asyncTaskToolDefs.length;
+    logger.info('v21.0 §4: 异步任务托管工具已注册', { module: 'Bootstrap', count: asyncTaskToolDefs.length });
+  } catch (e: unknown) {
+    logger.warn('v21.0 §4: 异步任务托管工具注册失败', { module: 'Bootstrap', error: e instanceof Error ? e.message : String(e) });
   }
 
   // 工作流工具：视频/测试/文档/图像生成
