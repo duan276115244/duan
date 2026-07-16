@@ -69,6 +69,8 @@ export interface PromptContext {
   maxTokens?: number;
   /** 项目知识摘要 */
   projectKnowledge?: string | null;
+  /** 项目分层记忆（ProjectMemoryLoader 加载的多层级 .md 合并文本） */
+  projectMemory?: string | null;
   /** 自定义系统提示（来自外部调用方） */
   customSystemPrompt?: string;
   /** 情感识别信息 */
@@ -90,7 +92,7 @@ const INTENT_KEYWORDS: Record<UserIntent, string[]> = {
   code: ['代码', '函数', '类', '调试', '重构', '编译', 'bug', 'error', '修复', '实现', 'code', 'debug', 'refactor', 'function', 'class', 'build', 'test', 'git', '文件', '目录', '读写', 'shell', '命令', '脚本', '编程', '开发', '运行', '执行', '安装', 'npm', 'python', 'typescript', 'javascript', '修个', '帮我写', '生成代码'],
   desktop: ['桌面', '微信', '浏览器', '截图', '点击', '输入', '自动化', 'desktop', 'wechat', 'screenshot', 'click', 'type', '窗口', '应用', 'PS', 'Photoshop', 'PPT', 'Word', 'Excel', '打开', '关闭', '发送消息', '发微信'],
   web: ['搜索', '网页', '抓取', 'HTTP', 'API', '网络', 'search', 'web', 'fetch', 'scrape', 'url', '链接', '查一下', '帮我查', '搜一下', '上网', '浏览器', '豆包', '视频生成'],
-  memory: ['记忆', '经验', '教训', '学习', 'memory', 'remember', 'forget', 'recall', '记住', '回忆', '你记得', '上次', '之前'],
+  memory: ['记忆', '经验', '教训', '学习', 'memory', 'remember', 'forget', 'recall', '记住', '回忆', '你记得', '上次', '之前', '约定', '项目规则', '项目记忆', 'conventions', 'CLAUDE.md', '记住这个', '记一下'],
   general: [],
 };
 
@@ -253,6 +255,10 @@ function buildContextLayer(ctx: PromptContext): string {
 
   if (ctx.projectKnowledge) {
     items.push(`项目:\n${ctx.projectKnowledge}`);
+  }
+
+  if (ctx.projectMemory) {
+    items.push(ctx.projectMemory);
   }
 
   if (ctx.emotionInfo) {

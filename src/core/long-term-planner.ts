@@ -285,8 +285,8 @@ ${project.goals.map(g => `
     const completedTasks = allTasks.filter(t => t.status === 'completed').length;
 
     const overdueTasks = allTasks.filter(t => {
-      if (t.status === 'completed' || !t.dueDate) return Promise.resolve(false);
-      return Promise.resolve(new Date(t.dueDate) < new Date());
+      if (t.status === 'completed' || !t.dueDate) return false;
+      return new Date(t.dueDate) < new Date();
     });
 
     const analysis = `

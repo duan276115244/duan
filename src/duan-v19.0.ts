@@ -300,7 +300,9 @@ export async function runDuan(): Promise<void> {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         return data.filter((m: any) => m && typeof m.role === 'string' && typeof m.content === 'string');
       }
-    } catch {}
+    } catch (e) {
+      console.warn('[duan] 加载对话历史失败:', e instanceof Error ? e.message : String(e));
+    }
     return [];
   }
   function saveHistory(): void {
@@ -309,7 +311,9 @@ export async function runDuan(): Promise<void> {
       // 限制持久化大小：保留最近 50 条消息
       const toSave = conversationHistory.slice(-50);
       atomicWriteJsonSync(historyPath, toSave);
-    } catch {}
+    } catch (e) {
+      console.warn('[duan] 保存对话历史失败:', e instanceof Error ? e.message : String(e));
+    }
   }
   const persistedHistory = loadHistory();
   const conversationHistory: { role: 'user' | 'assistant' | 'system'; content: string }[] = [
@@ -599,7 +603,7 @@ export async function runDuan(): Promise<void> {
       if (cmdResult === 'CLEAR_HISTORY') {
         conversationHistory.splice(1);
         // P0 交互自然度修复：同步清空持久化历史
-        try { if (fs.existsSync(historyPath)) fs.unlinkSync(historyPath); } catch {}
+        try { if (fs.existsSync(historyPath)) fs.unlinkSync(historyPath); } catch (e) { console.warn('[duan] 清空历史文件失败:', e instanceof Error ? e.message : String(e)); }
         console.info(C.dim('  ✓ 对话已清空'));
         await sleep(800);
         continue;

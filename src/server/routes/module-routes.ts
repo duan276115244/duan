@@ -203,8 +203,8 @@ export function registerModuleRoutes(app: express.Application, ctx: ServerContex
         return res.status(400).json({ success: false, error: '技能名称和描述不能为空' });
       }
       // 安全校验技能名
-      const skillId = name.toLowerCase().replace(/[^a-z0-9_\-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
-      if (!skillId || !/^[a-z0-9_\-]+$/.test(skillId)) {
+      const skillId = name.toLowerCase().replace(/[^a-z0-9_-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+      if (!skillId || !/^[a-z0-9_-]+$/.test(skillId)) {
         return res.status(400).json({ success: false, error: '技能名称无效（仅允许小写字母、数字、下划线、连字符）' });
       }
 

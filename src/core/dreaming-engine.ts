@@ -437,7 +437,9 @@ ${fragmentsText}
           }
         }
       }
-    } catch {}
+    } catch (e) {
+      console.warn('[DreamingEngine] 加载 chains.json 失败:', e instanceof Error ? e.message : String(e));
+    }
     try {
       if (fs.existsSync(fragmentsPath)) {
         const raw = JSON.parse(fs.readFileSync(fragmentsPath, 'utf-8'));
@@ -447,7 +449,9 @@ ${fragmentsText}
           }
         }
       }
-    } catch {}
+    } catch (e) {
+      console.warn('[DreamingEngine] 加载 fragments.json 失败:', e instanceof Error ? e.message : String(e));
+    }
     try {
       const metaPath = path.join(this.config.persistDir, 'meta.json');
       if (fs.existsSync(metaPath)) {
@@ -457,7 +461,9 @@ ${fragmentsText}
         this.lastExtraction = meta.lastExtraction || null;
         this.lastConsolidation = meta.lastConsolidation || null;
       }
-    } catch {}
+    } catch (e) {
+      console.warn('[DreamingEngine] 加载 meta.json 失败:', e instanceof Error ? e.message : String(e));
+    }
   }
 
   private markDirty(): void {

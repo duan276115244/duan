@@ -191,6 +191,24 @@ import { VirtualMemoryWorkflow } from './virtual-memory-workflow.js';
 import { Brain } from './brain.js';
 import { ProjectConfig } from './project-config.js';
 import { ProjectContext } from './project-context.js';
+import { ProjectMemoryLoader } from './project-memory-loader.js';
+import { CodebaseIndexer } from './codebase-indexer.js';
+import { NativeDepsResolver } from './native-deps.js';
+import { SubAgentPresetRegistry } from './subagent-presets.js';
+import { SlashCommandRegistry } from './slash-commands.js';
+import { ContextDiscoverer } from './context-discoverer.js';
+import { MultiFileEditor } from './multi-file-editor.js';
+import { ToolPermissionRegistry } from './tool-permissions.js';
+import { PersonaSystem } from './persona-system.js';
+import { GoalTracker } from './goal-tracker.js';
+import { AutonomousEngineer } from './autonomous-engineer.js';
+import { DocumentParser } from './document-parser.js';
+import { ProactiveQuestionEngine } from './proactive-question-engine.js';
+import { SkillMarket } from './skill-market.js';
+import { OfflineCoordinator } from './offline-coordinator.js';
+import { LearningProgressVisualizer } from './learning-progress-visualizer.js';
+import { ModelFineTuner } from './model-fine-tuner.js';
+import { CollaborationEngine } from './collaboration-engine.js';
 import { ModelRouter } from './model-router.js';
 import { StructuredOutputParser } from './structured-output-parser.js';
 
@@ -414,6 +432,42 @@ export interface CoreModules {
   guardrailSystem: GuardrailSystem;
   traceCollector: TraceCollector;
   projectConfig: ProjectConfig;
+  /** v20.0 项目分层记忆加载器 */
+  projectMemoryLoader: ProjectMemoryLoader;
+  /** v20.0 代码库语义索引器 */
+  codebaseIndexer: CodebaseIndexer;
+  /** v20.0 国产系统原生依赖适配器 */
+  nativeDepsResolver: NativeDepsResolver;
+  /** v20.0 专用子代理预设注册表 */
+  subAgentPresetRegistry: SubAgentPresetRegistry;
+  /** v20.0 斜杠命令系统（~/.duan/commands + .duan/commands） */
+  slashCommandRegistry: SlashCommandRegistry;
+  /** v20.0 动态上下文发现（对标 Cursor dynamic discovery） */
+  contextDiscoverer: ContextDiscoverer;
+  /** v20.0 多文件协同编辑（原子性多文件修改 + 失败回滚） */
+  multiFileEditor: MultiFileEditor;
+  /** v20.0 分级许可清单（对标 Claude Code permissions：会话/CLI/项目/全局四级） */
+  toolPermissionRegistry: ToolPermissionRegistry;
+  /** v20.0 角色人格系统（对标 MetaGPT：7 预设角色 + 自定义 + 角色间通信） */
+  personaSystem: PersonaSystem;
+  /** v20.0 长期目标追踪（对标 AutoGPT：目标树 + 进度持久化 + 自主迭代 + 中断恢复） */
+  goalTracker: GoalTracker;
+  /** v20.0 自主工程任务（对标 Devin：5 阶段流水线 + 失败重试 + 中断恢复 + 多部署目标） */
+  autonomousEngineer: AutonomousEngineer;
+  /** v20.0 多模态文档解析（PDF/Word/Excel/PPT/文本，动态加载外部库，缺失时优雅降级） */
+  documentParser: DocumentParser;
+  /** v20.0 §5.4 主动提问引擎（检测知识盲区/错误模式/兴趣信号时主动向用户提问） */
+  proactiveQuestionEngine: ProactiveQuestionEngine;
+  /** v20.0 §5.4 技能市场（统一门户，聚合管理各类技能资产的发布/浏览/下载/评分/推荐/举报） */
+  skillMarket: SkillMarket;
+  /** v20.0 §5.2 离线协调器（网络状态检测/本地模型检测/离线模式切换/离线知识库） */
+  offlineCoordinator: OfflineCoordinator;
+  /** v20.0 §5.4 学习进度可视化（学习曲线/能力雷达图/进度报告/趋势分析） */
+  learningProgressVisualizer: LearningProgressVisualizer;
+  /** v20.0 §3.5 模型微调能力（数据收集/格式化/训练调度/模型注册） */
+  modelFineTuner: ModelFineTuner;
+  /** v20.0 §5.3 协作能力（团队管理/共享会话/任务派发/团队知识库） */
+  collaborationEngine: CollaborationEngine;
   modelRouter: ModelRouter;
   outputParser: StructuredOutputParser;
   /** P0 真实修复：虚拟内存工作流 — todo.md + 长文外接存储 */
@@ -472,6 +526,10 @@ export interface CoreModules {
 // ============ 创建核心模块 ============
 
 export function createCoreModules(): CoreModules {
+  // 定时器清理暂存区：在 cleanupFns 声明前创建的 setInterval/setTimeout 先存这里，
+  // cleanupFns 声明后会统一 flush 进去（dispose 时统一清理）
+  const pendingCleanupTimers: Array<() => void> = [];
+
   // P1-1: 生产环境默认启用 structured-output-enforcer 多策略降级
   // 避免 LLM 返回截断/单引号/尾逗号 JSON 时裸 JSON.parse 失败导致工具调用必然返回 {}
   // 仅在未显式配置时设置，尊重操作员显式 false 和测试环境默认关闭
@@ -711,11 +769,13 @@ ${ctxStr ? `对话上下文: "${ctxStr}"` : ''}
   // P0 自我改进接通：定期触发 SelfEvolutionEngine.evolve() — 之前引擎真实存在但 evolve() 从不被调用
   // 间隔 6 小时（21600000ms），fire-and-forget + catch，失败不阻塞主循环
   try {
-    setInterval(() => {
+    const selfEvolutionIntervalId = setInterval(() => {
       void selfEvolutionEngine.evolve().catch((e: unknown) => {
         logger.warn('SelfEvolutionEngine.evolve() 定期触发失败', { module: 'Bootstrap', error: e instanceof Error ? e.message : String(e) });
       });
     }, 6 * 60 * 60 * 1000);
+    // 注册到 cleanupFns（在下方声明后立即注册，dispose 时清理避免定时器泄漏）
+    pendingCleanupTimers.push(() => clearInterval(selfEvolutionIntervalId));
     logger.info('SelfEvolutionEngine 已接通：每 6 小时自动执行一轮进化', { module: 'Bootstrap' });
   } catch (e: unknown) {
     logger.warn('SelfEvolutionEngine 定期触发注册失败', { module: 'Bootstrap', error: e instanceof Error ? e.message : String(e) });
@@ -803,6 +863,8 @@ ${ctxStr ? `对话上下文: "${ctxStr}"` : ''}
 
   /** 资源清理函数集合 — 在 dispose() 时统一调用（提前声明以便后续模块注册） */
   const cleanupFns: Array<() => void> = [];
+  // flush 暂存的定时器清理函数（在 cleanupFns 声明前创建的 setInterval 等）
+  cleanupFns.push(...pendingCleanupTimers);
 
   // ===== DreamingBridge: 双向同步 DreamingEngine ↔ MemoryStore =====
   const memoryStore = new MemoryStore();
@@ -926,6 +988,93 @@ ${ctxStr ? `对话上下文: "${ctxStr}"` : ''}
   brain.init().catch(err => logger.warn('Brain 初始化失败', { error: err?.message }));
   const projectConfig = new ProjectConfig();
   const projectContext = new ProjectContext();
+  // v20.0 项目分层记忆加载器（对标 CLAUDE.md 多层级记忆）
+  const projectMemoryLoader = new ProjectMemoryLoader();
+  // v20.0 代码库语义索引器（对标 Cursor codebase indexing）
+  const codebaseIndexer = new CodebaseIndexer();
+  // v20.0 国产系统原生依赖适配器（UOS/麒麟/LoongArch 适配）
+  const nativeDepsResolver = new NativeDepsResolver();
+  // v20.0 专用子代理预设注册表（8 类预设 + 意图识别派发）
+  const subAgentPresetRegistry = new SubAgentPresetRegistry();
+  // v20.0 斜杠命令系统（对标 Claude Code .claude/commands，支持 $ARGUMENTS 等占位符）
+  const slashCommandRegistry = new SlashCommandRegistry();
+  // v20.0 动态上下文发现（对标 Cursor dynamic discovery，三来源综合 + token 预算裁剪）
+  const contextDiscoverer = new ContextDiscoverer();
+  contextDiscoverer.setCodebaseIndexer(codebaseIndexer);
+  // v20.0 多文件协同编辑（原子性多文件修改 + 失败回滚）
+  const multiFileEditor = new MultiFileEditor();
+  // v20.0 分级许可清单（对标 Claude Code permissions：会话/CLI/项目/全局四级）
+  const toolPermissionRegistry = new ToolPermissionRegistry();
+  try {
+    toolPermissionRegistry.load();
+  } catch (err: unknown) {
+    logger.warn('ToolPermissionRegistry 加载失败（非致命）', { error: err instanceof Error ? err.message : String(err) });
+  }
+  // v20.0 角色人格系统（对标 MetaGPT：7 预设角色 + 自定义 + 角色间通信）
+  const personaSystem = new PersonaSystem();
+  try {
+    personaSystem.loadCustom();
+  } catch (err: unknown) {
+    logger.warn('PersonaSystem 加载自定义角色失败（非致命）', { error: err instanceof Error ? err.message : String(err) });
+  }
+  // v20.0 长期目标追踪（对标 AutoGPT：目标树 + 进度持久化 + 自主迭代 + 中断恢复）
+  const goalTracker = new GoalTracker();
+  try {
+    void goalTracker.initialize();
+  } catch (err: unknown) {
+    logger.warn('GoalTracker 初始化失败（非致命）', { error: err instanceof Error ? err.message : String(err) });
+  }
+  // v20.0 自主工程任务（对标 Devin：5 阶段流水线 + 失败重试 + 中断恢复 + 多部署目标）
+  const autonomousEngineer = new AutonomousEngineer();
+  try {
+    void autonomousEngineer.initialize();
+  } catch (err: unknown) {
+    logger.warn('AutonomousEngineer 初始化失败（非致命）', { error: err instanceof Error ? err.message : String(err) });
+  }
+  // v20.0 多模态文档解析（PDF/Word/Excel/PPT/文本，动态加载外部库，缺失时优雅降级）
+  const documentParser = new DocumentParser();
+  // v20.0 §5.4 主动提问引擎（检测知识盲区/错误模式/兴趣信号时主动向用户提问）
+  const proactiveQuestionEngine = new ProactiveQuestionEngine();
+  try {
+    void proactiveQuestionEngine.initialize();
+  } catch (err: unknown) {
+    logger.warn('ProactiveQuestionEngine 初始化失败（非致命）', { error: err instanceof Error ? err.message : String(err) });
+  }
+  // v20.0 §5.4 技能市场（统一门户，聚合管理各类技能资产）
+  const skillMarket = SkillMarket.getInstance();
+  try {
+    skillMarket.initialize();
+  } catch (err: unknown) {
+    logger.warn('SkillMarket 初始化失败（非致命）', { error: err instanceof Error ? err.message : String(err) });
+  }
+  // v20.0 §5.2 离线协调器（网络检测/本地模型/离线模式/知识库）
+  const offlineCoordinator = OfflineCoordinator.getInstance();
+  try {
+    offlineCoordinator.initialize();
+  } catch (err: unknown) {
+    logger.warn('OfflineCoordinator 初始化失败（非致命）', { error: err instanceof Error ? err.message : String(err) });
+  }
+  // v20.0 §5.4 学习进度可视化（学习曲线/能力雷达图/进度报告）
+  const learningProgressVisualizer = LearningProgressVisualizer.getInstance();
+  try {
+    learningProgressVisualizer.initialize();
+  } catch (err: unknown) {
+    logger.warn('LearningProgressVisualizer 初始化失败（非致命）', { error: err instanceof Error ? err.message : String(err) });
+  }
+  // v20.0 §3.5 模型微调能力（数据收集/格式化/训练调度/模型注册）
+  const modelFineTuner = ModelFineTuner.getInstance();
+  try {
+    modelFineTuner.initialize();
+  } catch (err: unknown) {
+    logger.warn('ModelFineTuner 初始化失败（非致命）', { error: err instanceof Error ? err.message : String(err) });
+  }
+  // v20.0 §5.3 协作能力（团队管理/共享会话/任务派发/团队知识库）
+  const collaborationEngine = CollaborationEngine.getInstance();
+  try {
+    collaborationEngine.initialize();
+  } catch (err: unknown) {
+    logger.warn('CollaborationEngine 初始化失败（非致命）', { error: err instanceof Error ? err.message : String(err) });
+  }
   toolContext.projectContext = projectContext;
 
   const notificationService = new NotificationService();
@@ -1415,7 +1564,7 @@ ${ctxStr ? `对话上下文: "${ctxStr}"` : ''}
     handoffSystem, diffEditor, guardrailSystem, traceCollector,
     virtualMemoryWorkflow,
     brain,
-    projectConfig, modelRouter, outputParser,
+    projectConfig, projectMemoryLoader, codebaseIndexer, nativeDepsResolver, subAgentPresetRegistry, slashCommandRegistry, contextDiscoverer, multiFileEditor, toolPermissionRegistry, personaSystem, goalTracker, autonomousEngineer, documentParser, proactiveQuestionEngine, skillMarket, offlineCoordinator, learningProgressVisualizer, modelFineTuner, collaborationEngine, modelRouter, outputParser,
     // Phase 8
     approvalGate, ethicsReviewEngine, codeKnowledgeGraph, sotaBenchmarkScheduler, selfHealing, consistencyGuard, agentConfig, contextSelector,
     // 三大核心功能模块
@@ -1853,6 +2002,8 @@ export function createAgentLoop(
   // 注入项目知识索引
   const projectKnowledge = new ProjectKnowledge();
   loop.injectProjectKnowledge(projectKnowledge);
+  // v20.0 注入项目分层记忆加载器
+  loop.injectProjectMemoryLoader(modules.projectMemoryLoader);
 
   // P1-1: 注入三级记忆架构（L0 会话 / L1 持久 / L2 技能）— 修复死代码
   // 复用 bootstrap 已创建的 vectorStore 和 memoryManager，避免双实例导致内存浪费与写入冲突
@@ -2016,6 +2167,42 @@ export function createAgentLoop(
     // 之前 Brain 是死代码（bootstrap 不导入，全局无 new Brain()）。
     ['brain',              () => modules.brain.getToolDefinitions()],
     ['projectConfig',       () => modules.projectConfig.getToolDefinitions()],
+    // v20.0 项目分层记忆工具（project_memory_list/write/append/delete）
+    ['projectMemoryLoader', () => modules.projectMemoryLoader.getToolDefinitions()],
+    // v20.0 代码库语义索引工具（codebase_search/find_references/call_graph/overview）
+    ['codebaseIndexer',     () => modules.codebaseIndexer.getToolDefinitions()],
+    // v20.0 国产系统平台与依赖查询工具（native_status）
+    ['nativeDepsResolver',  () => modules.nativeDepsResolver.getToolDefinitions()],
+    // v20.0 专用子代理预设工具（subagent_list/subagent_dispatch）
+    ['subAgentPresets',     () => modules.subAgentPresetRegistry.getToolDefinitions()],
+    // v20.0 斜杠命令工具（slash_command_list/slash_command_execute）
+    ['slashCommands',       () => modules.slashCommandRegistry.getToolDefinitions()],
+    // v20.0 动态上下文发现工具（context_discover）
+    ['contextDiscoverer',   () => modules.contextDiscoverer.getToolDefinitions()],
+    // v20.0 多文件协同编辑工具（multi_file_edit）
+    ['multiFileEditor',     () => modules.multiFileEditor.getToolDefinitions()],
+    // v20.0 分级许可清单工具（permission_list/grant/revoke）
+    ['toolPermissionRegistry', () => modules.toolPermissionRegistry.getToolDefinitions()],
+    // v20.0 角色人格系统工具（persona_list/info/create/delete/send_message）
+    ['personaSystem',       () => modules.personaSystem.getToolDefinitions()],
+    // v20.0 长期目标追踪工具（goal_create/list/info/progress/advance/update_status/add_subtask/complete_subtask/delete/template_list）
+    ['goalTracker',         () => modules.goalTracker.getToolDefinitions()],
+    // v20.0 自主工程任务工具（engineering_create/list/info/run/pause/resume/delete/targets）
+    ['autonomousEngineer',  () => modules.autonomousEngineer.getToolDefinitions()],
+    // v20.0 多模态文档解析工具（document_parse/document_parse_dir/document_types）
+    ['documentParser',      () => modules.documentParser.getToolDefinitions()],
+    // v20.0 §5.4 主动提问工具（proactive_question_check/feedback/stats/policy）
+    ['proactiveQuestionEngine', () => modules.proactiveQuestionEngine.getToolDefinitions()],
+    // v20.0 §5.4 技能市场工具（skill_market_search/list/info/publish/install/rate/report/stats）
+    ['skillMarket',         () => modules.skillMarket.getToolDefinitions()],
+    // v20.0 §5.2 离线协调器工具（offline_status/probe/mode_toggle/models_detect/models_list/knowledge_query/knowledge_add/knowledge_list）
+    ['offlineCoordinator',  () => modules.offlineCoordinator.getToolDefinitions()],
+    // v20.0 §5.4 学习进度可视化工具（progress_overview/learning_curve/radar_chart/skill_tree/knowledge_gaps/trends/snapshot/report）
+    ['learningProgressVisualizer', () => modules.learningProgressVisualizer.getToolDefinitions()],
+    // v20.0 §3.5 模型微调工具（finetune_collect_data/list_examples/create_dataset/list_datasets/create_job/start_job/job_status/list_models）
+    ['modelFineTuner',     () => modules.modelFineTuner.getToolDefinitions()],
+    // v20.0 §5.3 协作工具（collab_team_register/list/session_create/list/message/task_assign/list/knowledge_share）
+    ['collaborationEngine', () => modules.collaborationEngine.getToolDefinitions()],
     ['modelRouter',         () => modules.modelRouter.getToolDefinitions()],
     ['outputParser',        () => modules.outputParser.getToolDefinitions()],
     ['approvalGate',        () => modules.approvalGate.getToolDefinitions()],

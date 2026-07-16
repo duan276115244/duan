@@ -208,7 +208,7 @@ export class VoiceInteractionSystem {
     
     await this.wakeUp.start((wakeWord) => {
       console.log(`🎉 唤醒成功！`);
-      this.onWakeUp();
+      void this.onWakeUp();
     });
     
     this.isActive = true;

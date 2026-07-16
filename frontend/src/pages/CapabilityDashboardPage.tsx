@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 能力评估仪表盘页面
  *
  * 数据来源（双模式）：
@@ -192,8 +192,8 @@ export function CapabilityDashboardPage({ onBack }: { onBack?: () => void }) {
   // 数据获取：优先 Electron IPC，回退 fetch
   const fetchData = useCallback(async () => {
     setError(null);
-    const isE = typeof window !== 'undefined' && !!(window as any).electronAPI;
-    const api = isE ? (window as any).electronAPI?.capability : null;
+    const isE = typeof window !== 'undefined' && !!window.electronAPI;
+    const api = isE ? window.electronAPI?.capability : null;
 
     try {
       if (api?.report) {
@@ -233,8 +233,8 @@ export function CapabilityDashboardPage({ onBack }: { onBack?: () => void }) {
     setAssessing(true);
     setError(null);
     try {
-      const isE = typeof window !== 'undefined' && !!(window as any).electronAPI;
-      const api = isE ? (window as any).electronAPI?.capability : null;
+      const isE = typeof window !== 'undefined' && !!window.electronAPI;
+      const api = isE ? window.electronAPI?.capability : null;
       let r: CapabilityReport | null = null;
       if (api?.assess) {
         r = await api.assess({ label: 'current' });
@@ -278,8 +278,8 @@ export function CapabilityDashboardPage({ onBack }: { onBack?: () => void }) {
     setSavingBaseline(true);
     setError(null);
     try {
-      const isE = typeof window !== 'undefined' && !!(window as any).electronAPI;
-      const api = isE ? (window as any).electronAPI?.capability : null;
+      const isE = typeof window !== 'undefined' && !!window.electronAPI;
+      const api = isE ? window.electronAPI?.capability : null;
       let r: CapabilityReport | null = null;
       if (api?.saveBaseline) {
         r = await api.saveBaseline();

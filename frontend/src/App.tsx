@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, Component, type ReactNode } from 'react';
+﻿import { useState, useEffect, useRef, lazy, Suspense, Component, type ReactNode, type ErrorInfo } from 'react';
 import {
   Globe, Terminal, Code2,
   ChevronRight, ChevronDown, Cpu, Wrench,
@@ -6,24 +6,37 @@ import {
   Zap, Sparkles, Radio, Layers, Shield, GitBranch, Heart, Clock, MessageCircle, Bot, Activity,
 } from 'lucide-react';
 import { ChatArea } from '@/components/ChatArea';
-import { ConfigPage } from '@/pages/ConfigPage';
-import { ChannelsPage } from '@/pages/ChannelsPage';
-import { SkillManagePage } from '@/pages/SkillManagePage';
-import { McpManagePage } from '@/pages/McpManagePage';
-import { DashboardPage } from '@/pages/DashboardPage';
-import { CapabilityDashboardPage } from '@/pages/CapabilityDashboardPage';
-import { VoiceSettingsPage } from '@/pages/VoiceSettingsPage';
 import { SystemStatus } from '@/components/SystemStatus';
 import { TitleBar } from '@/components/TitleBar';
 import { Sidebar } from '@/components/Sidebar';
 import { useChatStore } from '@/store/chatStore';
+import { useShallow } from 'zustand/react/shallow';
 import { useSystemStatus as useSystemStatusHook } from '@/hooks/useApi';
 import { BrowserPanel } from '@/components/BrowserPanel';
 import { TerminalPanel } from '@/components/TerminalPanel';
 import { EditorPanelSafe } from '@/components/EditorPanel';
 import { McpApprovalDialog } from '@/components/McpApprovalDialog';
-import { SubAgentPanel } from '@/components/SubAgentPanel';
 import { useProactiveVoice } from '@/hooks/useProactiveVoice';
+
+// ===== 路由级代码分割：二级页面按需加载，减小首屏 bundle =====
+const ConfigPage = lazy(() => import('@/pages/ConfigPage').then(m => ({ default: m.ConfigPage })));
+const ChannelsPage = lazy(() => import('@/pages/ChannelsPage').then(m => ({ default: m.ChannelsPage })));
+const SkillManagePage = lazy(() => import('@/pages/SkillManagePage').then(m => ({ default: m.SkillManagePage })));
+const McpManagePage = lazy(() => import('@/pages/McpManagePage').then(m => ({ default: m.McpManagePage })));
+const DashboardPage = lazy(() => import('@/pages/DashboardPage').then(m => ({ default: m.DashboardPage })));
+const CapabilityDashboardPage = lazy(() => import('@/pages/CapabilityDashboardPage').then(m => ({ default: m.CapabilityDashboardPage })));
+const VoiceSettingsPage = lazy(() => import('@/pages/VoiceSettingsPage').then(m => ({ default: m.VoiceSettingsPage })));
+const SubAgentPanel = lazy(() => import('@/components/SubAgentPanel').then(m => ({ default: m.SubAgentPanel })));
+
+// 页面加载占位符
+function PageLoader() {
+  return (
+    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#475569', fontSize: 14 }}>
+      <Activity style={{ width: 20, height: 20, animation: 'spin 1s linear infinite', marginRight: 8 }} />
+      加载中...
+    </div>
+  );
+}
 
 // ===== 工具面板类型 =====
 type ToolId = 'browser' | 'terminal' | 'editor';
@@ -225,16 +238,16 @@ function ToolPanel({
 
 // ===== ChatArea 底部状态栏 =====
 function ChatStatusBar() {
-  const { isStreaming, tools } = useChatStore();
+  const { isStreaming, tools } = useChatStore(useShallow(s => ({ isStreaming: s.isStreaming, tools: s.tools })));
   const [expanded, setExpanded] = useState(false);
   const [currentModel, setCurrentModel] = useState('AUTO');
 
   useEffect(() => {
     // 读取当前配置的模型名
     try {
-      const api = (window as any).electronAPI;
+      const api = window.electronAPI;
       if (api?.config?.load) {
-        api.config.load().then((config: any) => {
+        api.config.load().then((config) => {
           if (config?.defaultModel) setCurrentModel(config.defaultModel);
           else if (config?.model) setCurrentModel(config.model);
           else if (config?.defaultProvider) setCurrentModel(config.defaultProvider);
@@ -312,7 +325,7 @@ function ChatStatusBar() {
 // ===== 关于页面（增强版） =====
 function AboutPage({ onBack }: { onBack: () => void }) {
   const systemStatus = useSystemStatusHook();
-  const { conversations, isStreaming } = useChatStore();
+  const { conversations, isStreaming } = useChatStore(useShallow(s => ({ conversations: s.conversations, isStreaming: s.isStreaming })));
   const [statusExpanded, setStatusExpanded] = useState(true);
   const lastActivityRef = useRef<number>(Date.now());
 
@@ -618,6 +631,7 @@ function MainLayout() {
   const [showAbout, setShowAbout] = useState(false);
   const [showVoice, setShowVoice] = useState(false);
   const [showSubAgent, setShowSubAgent] = useState(false);
+  const [showWorkflow, setShowWorkflow] = useState(false);
   const [showMcp, setShowMcp] = useState(false);
   const [showCapability, setShowCapability] = useState(false);
   const [browserNavigateUrl, setBrowserNavigateUrl] = useState<string>('');
@@ -629,9 +643,8 @@ function MainLayout() {
 
   // Agent 自动激活工具面板
   useEffect(() => {
-    const isE = typeof window !== 'undefined' && !!(window as any).electronAPI;
-    if (!isE) return;
-    const api = (window as any).electronAPI;
+    if (typeof window === 'undefined' || !window.electronAPI) return;
+    const api = window.electronAPI;
     const unsub1 = api.tool?.onActivate?.((toolId: string) => {
       setActiveTool(toolId as ToolId);
     });
@@ -684,6 +697,7 @@ function MainLayout() {
     setShowAbout(false);
     setShowVoice(false);
     setShowSubAgent(false);
+    setShowWorkflow(false);
     setShowMcp(false);
     setShowCapability(false);
     // 然后根据导航激活对应页面
@@ -694,6 +708,7 @@ function MainLayout() {
       case 'config': setShowConfig(true); break;
       case 'about': setShowAbout(true); break;
       case 'subagent': setShowSubAgent(true); break;
+      case 'workflow': setShowWorkflow(true); break;
       case 'mcp': setShowMcp(true); break;
       case 'capability': setShowCapability(true); break;
     }
@@ -703,7 +718,7 @@ function MainLayout() {
   };
 
   // 判断当前是否在对话页面
-  const isChatPage = !showDashboard && !showSkills && !showChannels && !showConfig && !showAbout && !showVoice && !showSubAgent && !showMcp && !showCapability;
+  const isChatPage = !showDashboard && !showSkills && !showChannels && !showConfig && !showAbout && !showVoice && !showSubAgent && !showWorkflow && !showMcp && !showCapability;
 
   // 监听自定义导航事件（如 ConfigPage 中的语音设置入口）
   useEffect(() => {
@@ -812,38 +827,58 @@ function MainLayout() {
       </div>
 
       {/* ===== 仪表盘页面 ===== */}
-      <div style={{ display: showDashboard ? 'flex' : 'none', flex: 1, overflow: 'hidden' }}>
-        <DashboardPage onBack={() => { setShowDashboard(false); setActiveNav('chat'); }} />
-      </div>
+      {showDashboard && (
+        <div style={{ flex: 1, overflow: 'hidden' }}>
+          <Suspense fallback={<PageLoader />}>
+            <DashboardPage onBack={() => { setShowDashboard(false); setActiveNav('chat'); }} />
+          </Suspense>
+        </div>
+      )}
 
       {/* ===== 技能管理页面 ===== */}
-      <div style={{ display: showSkills ? 'flex' : 'none', flex: 1, overflow: 'hidden', backgroundColor: '#0a0e1a', position: 'relative', flexDirection: 'column' }}>
-        <div className="tech-bg" />
-        <div style={{ position: 'relative', zIndex: 10, flex: 1, overflow: 'hidden' }}>
-          <SkillManagePage onBack={() => { setShowSkills(false); setActiveNav('chat'); }} />
+      {showSkills && (
+        <div style={{ flex: 1, overflow: 'hidden', backgroundColor: '#0a0e1a', position: 'relative', flexDirection: 'column' }}>
+          <div className="tech-bg" />
+          <div style={{ position: 'relative', zIndex: 10, flex: 1, overflow: 'hidden' }}>
+            <Suspense fallback={<PageLoader />}>
+              <SkillManagePage onBack={() => { setShowSkills(false); setActiveNav('chat'); }} />
+            </Suspense>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* ===== 消息通道页面 ===== */}
-      <div style={{ display: showChannels ? 'flex' : 'none', flex: 1, overflow: 'hidden', backgroundColor: '#0a0e1a', position: 'relative', flexDirection: 'column' }}>
-        <div className="tech-bg" />
-        <div style={{ position: 'relative', zIndex: 10, flex: 1, overflow: 'hidden' }}>
-          <ChannelsPage onBack={() => { setShowChannels(false); setActiveNav('chat'); }} />
+      {showChannels && (
+        <div style={{ flex: 1, overflow: 'hidden', backgroundColor: '#0a0e1a', position: 'relative', flexDirection: 'column' }}>
+          <div className="tech-bg" />
+          <div style={{ position: 'relative', zIndex: 10, flex: 1, overflow: 'hidden' }}>
+            <Suspense fallback={<PageLoader />}>
+              <ChannelsPage onBack={() => { setShowChannels(false); setActiveNav('chat'); }} />
+            </Suspense>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* ===== 设置页面 ===== */}
-      <div style={{ display: showConfig ? 'flex' : 'none', flex: 1, overflow: 'hidden', backgroundColor: '#0a0e1a', position: 'relative', flexDirection: 'column' }}>
-        <div className="tech-bg" />
-        <div style={{ position: 'relative', zIndex: 10, flex: 1, overflow: 'hidden' }}>
-          <ConfigPage onBack={() => { setShowConfig(false); setActiveNav('chat'); }} />
+      {showConfig && (
+        <div style={{ flex: 1, overflow: 'hidden', backgroundColor: '#0a0e1a', position: 'relative', flexDirection: 'column' }}>
+          <div className="tech-bg" />
+          <div style={{ position: 'relative', zIndex: 10, flex: 1, overflow: 'hidden' }}>
+            <Suspense fallback={<PageLoader />}>
+              <ConfigPage onBack={() => { setShowConfig(false); setActiveNav('chat'); }} />
+            </Suspense>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* ===== 语音设置页面 ===== */}
-      <div style={{ display: showVoice ? 'flex' : 'none', flex: 1, overflow: 'hidden', backgroundColor: '#0a0e1a', position: 'relative', flexDirection: 'column' }}>
-        <VoiceSettingsPage onBack={() => { setShowVoice(false); setActiveNav('chat'); }} />
-      </div>
+      {showVoice && (
+        <div style={{ flex: 1, overflow: 'hidden', backgroundColor: '#0a0e1a', position: 'relative', flexDirection: 'column' }}>
+          <Suspense fallback={<PageLoader />}>
+            <VoiceSettingsPage onBack={() => { setShowVoice(false); setActiveNav('chat'); }} />
+          </Suspense>
+        </div>
+      )}
 
       {/* ===== 关于页面 ===== */}
       <div style={{ display: showAbout ? 'flex' : 'none', flex: 1, overflow: 'hidden' }}>
@@ -851,28 +886,40 @@ function MainLayout() {
       </div>
 
       {/* ===== 多 Agent 编排页面 ===== */}
-      <div style={{ display: showSubAgent ? 'flex' : 'none', flex: 1, overflow: 'hidden', backgroundColor: '#0a0e1a', position: 'relative', flexDirection: 'column' }}>
-        <div className="tech-bg" />
-        <div style={{ position: 'relative', zIndex: 10, flex: 1, overflow: 'hidden' }}>
-          <SubAgentPanel onBack={() => { setShowSubAgent(false); setActiveNav('chat'); }} />
+      {showSubAgent && (
+        <div style={{ flex: 1, overflow: 'hidden', backgroundColor: '#0a0e1a', position: 'relative', flexDirection: 'column' }}>
+          <div className="tech-bg" />
+          <div style={{ position: 'relative', zIndex: 10, flex: 1, overflow: 'hidden' }}>
+            <Suspense fallback={<PageLoader />}>
+              <SubAgentPanel onBack={() => { setShowSubAgent(false); setActiveNav('chat'); }} />
+            </Suspense>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* ===== MCP 管理页面 ===== */}
-      <div style={{ display: showMcp ? 'flex' : 'none', flex: 1, overflow: 'hidden', backgroundColor: '#0a0e1a', position: 'relative', flexDirection: 'column' }}>
-        <div className="tech-bg" />
-        <div style={{ position: 'relative', zIndex: 10, flex: 1, overflow: 'hidden' }}>
-          <McpManagePage onBack={() => { setShowMcp(false); setActiveNav('chat'); }} />
+      {showMcp && (
+        <div style={{ flex: 1, overflow: 'hidden', backgroundColor: '#0a0e1a', position: 'relative', flexDirection: 'column' }}>
+          <div className="tech-bg" />
+          <div style={{ position: 'relative', zIndex: 10, flex: 1, overflow: 'hidden' }}>
+            <Suspense fallback={<PageLoader />}>
+              <McpManagePage onBack={() => { setShowMcp(false); setActiveNav('chat'); }} />
+            </Suspense>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* ===== 能力评估页面 ===== */}
-      <div style={{ display: showCapability ? 'flex' : 'none', flex: 1, overflow: 'hidden', backgroundColor: '#0a0e1a', position: 'relative', flexDirection: 'column' }}>
-        <div className="tech-bg" />
-        <div style={{ position: 'relative', zIndex: 10, flex: 1, overflow: 'hidden' }}>
-          <CapabilityDashboardPage onBack={() => { setShowCapability(false); setActiveNav('chat'); }} />
+      {showCapability && (
+        <div style={{ flex: 1, overflow: 'hidden', backgroundColor: '#0a0e1a', position: 'relative', flexDirection: 'column' }}>
+          <div className="tech-bg" />
+          <div style={{ position: 'relative', zIndex: 10, flex: 1, overflow: 'hidden' }}>
+            <Suspense fallback={<PageLoader />}>
+              <CapabilityDashboardPage onBack={() => { setShowCapability(false); setActiveNav('chat'); }} />
+            </Suspense>
+          </div>
         </div>
-      </div>
+      )}
 
       <style>{`
         @media (max-width: 1023px) {
@@ -907,7 +954,7 @@ class GlobalErrorBoundary extends Component<GlobalErrorBoundaryProps, GlobalErro
     return { hasError: true, error, showStack: false };
   }
 
-  componentDidCatch(error: Error, info: any) {
+  componentDidCatch(error: Error, info: ErrorInfo) {
     console.error('[App] Uncaught render error:', error, info);
   }
 

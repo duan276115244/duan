@@ -30,8 +30,8 @@ async function apiFetch(url: string, options?: RequestInit): Promise<Response> {
     }
 
     return response;
-  } catch (error: any) {
-    if (error.name === 'AbortError') {
+  } catch (error: unknown) {
+    if (error instanceof Error && error.name === 'AbortError') {
       throw new Error('请求超时，请稍后重试');
     }
     throw error;
@@ -118,7 +118,7 @@ export function useModels() {
       if (isElectron()) {
         const data = await window.electronAPI!.model.list();
         const modelList = Array.isArray(data) ? data : (data.models || []);
-        setModels(modelList.map((m: any) => ({
+        setModels(modelList.map((m: { id: string; name: string; provider: string }) => ({
           id: m.id,
           name: m.name,
           provider: m.provider,
@@ -249,7 +249,7 @@ export function useConfig() {
     }
   }, []);
 
-  const saveConfig = useCallback(async (newConfig: { apiKeys: Record<string, string>; defaultModel?: string; defaultProvider?: string; providerModels?: Record<string, string>; settings?: any; customBaseURL?: string; customModel?: string }) => {
+  const saveConfig = useCallback(async (newConfig: { apiKeys: Record<string, string>; defaultModel?: string; defaultProvider?: string; providerModels?: Record<string, string>; settings?: Record<string, unknown>; customBaseURL?: string; customModel?: string }) => {
     try {
       if (isElectron()) {
         await window.electronAPI!.config.save(newConfig);
@@ -311,7 +311,7 @@ export function useTestKey() {
         const data = await response.json();
         return { valid: data.valid || data.success || false, message: data.message || data.error || '' };
       }
-    } catch (error) {
+    } catch {
       return { valid: false, message: '测试请求失败' };
     } finally {
       setTesting(false);
@@ -357,7 +357,7 @@ export function useChatStream() {
       }, REQUEST_TIMEOUT);
 
       // 监听 Agent 流式输出
-      streamUnsubscribeRef.current = window.electronAPI!.agent.onStream((data: any) => {
+      streamUnsubscribeRef.current = window.electronAPI!.agent.onStream((data) => {
         // 收到流数据后清除超时
         if (timeoutRef.current) {
           clearTimeout(timeoutRef.current);
@@ -439,9 +439,9 @@ export function useChatStream() {
             streamUnsubscribeRef.current = null;
           }
         }
-      } catch (error: any) {
+      } catch (error: unknown) {
         if (!doneCalled) {
-          onEvent({ type: 'error', content: `发送失败: ${error.message}` });
+          onEvent({ type: 'error', content: `发送失败: ${error instanceof Error ? error.message : String(error)}` });
           doneCalled = true;
           onDone();
         }
@@ -534,9 +534,9 @@ export function useChatStream() {
         }
       }
       if (!webDoneCalled) { webDoneCalled = true; onDone(); }
-    } catch (error: any) {
-      if (error.name !== 'AbortError') {
-        onEvent({ type: 'error', content: `连接错误: ${error.message}` });
+    } catch (error: unknown) {
+      if (!(error instanceof Error) || error.name !== 'AbortError') {
+        onEvent({ type: 'error', content: `连接错误: ${error instanceof Error ? error.message : String(error)}` });
       }
       if (!webDoneCalled) { webDoneCalled = true; onDone(); }
     } finally {
@@ -580,7 +580,7 @@ export function useChatStream() {
 
 /** 对话管理 */
 export function useConversations() {
-  const [conversations, setConversations] = useState<any[]>([]);
+  const [conversations, setConversations] = useState<unknown[]>([]);
 
   const fetchConversations = useCallback(async () => {
     try {

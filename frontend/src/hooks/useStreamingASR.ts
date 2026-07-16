@@ -17,6 +17,54 @@ import { useRef, useState, useCallback, useEffect } from 'react';
  * - 浏览器不支持 webkitSpeechRecognition → 返回 supported=false，调用方应 fallback 到 IPC record
  * - 网络异常或识别失败 → onError 回调，调用方可 fallback
  */
+
+/** 浏览器 Web Speech API 最小类型声明（TS 标准库未内置 SpeechRecognition 构造器） */
+interface SpeechRecognitionAlternativeLike {
+  readonly transcript: string;
+  readonly confidence: number;
+}
+interface SpeechRecognitionResultLike {
+  readonly isFinal: boolean;
+  readonly length: number;
+  readonly [index: number]: SpeechRecognitionAlternativeLike;
+}
+interface SpeechRecognitionResultListLike {
+  readonly length: number;
+  readonly [index: number]: SpeechRecognitionResultLike;
+}
+interface SpeechRecognitionEventLike {
+  readonly resultIndex: number;
+  readonly results: SpeechRecognitionResultListLike;
+}
+interface SpeechRecognitionErrorEventLike {
+  readonly error: string;
+  readonly message?: string;
+}
+interface SpeechRecognitionLike {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  maxAlternatives: number;
+  onstart: (() => void) | null;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
+  onend: (() => void) | null;
+  start(): void;
+  stop(): void;
+  abort(): void;
+}
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+
+/** 获取浏览器 SpeechRecognition 构造函数（兼容 webkit 前缀），不支持时返回 undefined */
+function getSpeechRecognitionCtor(): SpeechRecognitionConstructor | undefined {
+  if (typeof window === 'undefined') return undefined;
+  const w = window as unknown as {
+    SpeechRecognition?: SpeechRecognitionConstructor;
+    webkitSpeechRecognition?: SpeechRecognitionConstructor;
+  };
+  return w.SpeechRecognition || w.webkitSpeechRecognition;
+}
+
 export interface StreamingASROptions {
   language?: string;
   continuous?: boolean;
@@ -51,8 +99,7 @@ export interface StreamingASRHandlers {
  * 检测浏览器是否支持 Web Speech API
  */
 function detectSpeechRecognition(): boolean {
-  if (typeof window === 'undefined') return false;
-  return !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
+  return !!getSpeechRecognitionCtor();
 }
 
 /**
@@ -89,7 +136,7 @@ export function useStreamingASR(
   const [finalText, setFinalText] = useState('');
   const [error, setError] = useState<string | undefined>(undefined);
 
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const shouldRestartRef = useRef(false);
   const finalTextRef = useRef('');
 
@@ -110,10 +157,11 @@ export function useStreamingASR(
     }
     if (recognitionRef.current) {
       // 已在监听，先停止再重启（避免重复实例）
-      try { recognitionRef.current.stop(); } catch {}
+      try { recognitionRef.current.stop(); } catch { /* ignore */ }
     }
 
-    const SpeechRecognitionCtor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const SpeechRecognitionCtor = getSpeechRecognitionCtor();
+    if (!SpeechRecognitionCtor) return;
     const recognition = new SpeechRecognitionCtor();
     recognition.lang = optionsRef.current.language;
     recognition.continuous = optionsRef.current.continuous;
@@ -127,7 +175,7 @@ export function useStreamingASR(
       handlersRef.current.onStateChange?.(true);
     };
 
-    recognition.onresult = (event: any) => {
+    recognition.onresult = (event) => {
       let interim = '';
       let finalChunk = '';
       // 遍历所有结果，区分 final 和 interim
@@ -167,7 +215,7 @@ export function useStreamingASR(
       }
     };
 
-    recognition.onerror = (event: any) => {
+    recognition.onerror = (event) => {
       const errType = event?.error || 'unknown';
       // no-speech 和 aborted 是正常情况，不视为错误
       if (errType === 'no-speech' || errType === 'aborted') {
@@ -209,7 +257,7 @@ export function useStreamingASR(
               try {
                 recognition.start();
                 setIsListening(true);
-              } catch {}
+              } catch { /* ignore */ }
             }
           }, 300);
         }
@@ -229,7 +277,7 @@ export function useStreamingASR(
   const stop = useCallback(() => {
     shouldRestartRef.current = false;
     if (recognitionRef.current) {
-      try { recognitionRef.current.stop(); } catch {}
+      try { recognitionRef.current.stop(); } catch { /* ignore */ }
     }
     setIsListening(false);
     setInterimText('');
@@ -247,7 +295,7 @@ export function useStreamingASR(
     return () => {
       shouldRestartRef.current = false;
       if (recognitionRef.current) {
-        try { recognitionRef.current.stop(); } catch {}
+        try { recognitionRef.current.stop(); } catch { /* ignore */ }
       }
     };
   }, []);

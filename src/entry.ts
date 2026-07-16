@@ -43,7 +43,11 @@ function isProjectSetupDone(): boolean {
 }
 
 function markProjectSetupDone(): void {
-  try { fs.writeFileSync('.setup-done', new Date().toISOString(), 'utf-8'); } catch {}
+  try {
+    fs.writeFileSync('.setup-done', new Date().toISOString(), 'utf-8');
+  } catch (e) {
+    console.warn('[entry] markProjectSetupDone 写入失败:', e instanceof Error ? e.message : String(e));
+  }
 }
 
 async function launchNewWindow() {

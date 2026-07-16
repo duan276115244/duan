@@ -56,6 +56,7 @@ function sanitizeKey(key: string): { ok: boolean; error?: string; value?: string
   if (trimmed.length > MAX_KEY_LEN) return { ok: false, error: `密钥长度超限（最多 ${MAX_KEY_LEN} 个字符）` };
   // 禁止空格、换行、控制字符
   if (/\s/.test(trimmed)) return { ok: false, error: '密钥不能包含空格或换行' };
+  // eslint-disable-next-line no-control-regex -- 控制字符校验是必须的
   if (/[\x00-\x1f\x7f]/.test(trimmed)) return { ok: false, error: '密钥不能包含控制字符' };
   // 禁止明显的脚本注入
   if (/<script|javascript:|on\w+\s*=/i.test(trimmed)) return { ok: false, error: '密钥包含非法字符' };
@@ -87,7 +88,7 @@ function sanitizeModelName(name: string): { ok: boolean; error?: string; value?:
   if (trimmed.length < 1) return { ok: false, error: '模型名称不能为空' };
   if (trimmed.length > MAX_MODEL_LEN) return { ok: false, error: `模型名称超限（最多 ${MAX_MODEL_LEN} 个字符）` };
   // 允许字母、数字、点、横线、下划线、斜线、冒号
-  if (!/^[a-zA-Z0-9._\-\/:]+$/.test(trimmed)) {
+  if (!/^[a-zA-Z0-9._\-/:]+$/.test(trimmed)) {
     return { ok: false, error: '模型名称只能包含字母、数字、._-/: 字符' };
   }
   return { ok: true, value: trimmed };
@@ -100,10 +101,43 @@ function sanitizeEndpointId(id: string): { ok: boolean; error?: string; value?: 
   if (trimmed.length > MAX_MODEL_LEN) return { ok: false, error: '接入点 ID 长度超限' };
   if (/\s/.test(trimmed)) return { ok: false, error: '接入点 ID 不能包含空格' };
   // 允许字母、数字、横线、下划线、点、斜线
-  if (!/^[a-zA-Z0-9._\-\/]+$/.test(trimmed)) {
+  if (!/^[a-zA-Z0-9._\-/]+$/.test(trimmed)) {
     return { ok: false, error: '接入点 ID 包含非法字符' };
   }
   return { ok: true, value: trimmed };
+}
+
+// 自我改进备份条目（与 electron.d.ts selfImprove.listBackups 返回结构一致）
+interface SelfImproveBackup {
+  name: string;
+  path: string;
+  size: number;
+  mtime: number;
+}
+
+// MCP 市场插件条目
+interface McpPlugin {
+  id: string;
+  name: string;
+  version: string;
+  description?: string;
+  type?: string;
+  enabled?: boolean;
+}
+
+// MCP 市场统计信息
+interface McpStatsInfo {
+  total: number;
+  mcpServers: number;
+  toolBundles: number;
+  enabled: number;
+}
+
+// MCP 插件操作（安装/卸载/启停）返回结果
+interface McpActionResult {
+  success?: boolean;
+  message?: string;
+  error?: string;
 }
 
 export function ConfigPage({ onBack }: { onBack?: () => void }) {
@@ -126,8 +160,8 @@ export function ConfigPage({ onBack }: { onBack?: () => void }) {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   // ===== 自我改进状态 =====
   const [selfImproveEnabled, setSelfImproveEnabled] = useState(false);
-  const [selfImproveHistory, setSelfImproveHistory] = useState<any[]>([]);
-  const [selfImproveBackups, setSelfImproveBackups] = useState<any[]>([]);
+  const [selfImproveHistory, setSelfImproveHistory] = useState<unknown[]>([]);
+  const [selfImproveBackups, setSelfImproveBackups] = useState<SelfImproveBackup[]>([]);
   const [selfImproveLoading, setSelfImproveLoading] = useState(false);
   // ===== i18n 语种状态 =====
   const [locale, setLocaleState] = useState<string>('zh-CN');
@@ -135,9 +169,9 @@ export function ConfigPage({ onBack }: { onBack?: () => void }) {
   const [evolveRunning, setEvolveRunning] = useState(false);
   const [evolveResult, setEvolveResult] = useState<{ type: 'success' | 'error'; text: string; details?: string } | null>(null);
   // D-MCP: MCP 插件市场状态
-  const [mcpPlugins, setMcpPlugins] = useState<any[]>([]);
+  const [mcpPlugins, setMcpPlugins] = useState<McpPlugin[]>([]);
   const [mcpInstalled, setMcpInstalled] = useState<Set<string>>(new Set());
-  const [mcpStats, setMcpStats] = useState<{ total: number; mcpServers: number; toolBundles: number; enabled: number } | null>(null);
+  const [mcpStats, setMcpStats] = useState<McpStatsInfo | null>(null);
   const [mcpLoading, setMcpLoading] = useState(false);
   const [mcpSearch, setMcpSearch] = useState('');
   const [mcpAction, setMcpAction] = useState<string | null>(null);
@@ -175,7 +209,7 @@ export function ConfigPage({ onBack }: { onBack?: () => void }) {
 
   // ===== 加载自我改进状态 =====
   const loadSelfImproveStatus = async () => {
-    const api = (window as any).electronAPI;
+    const api = window.electronAPI;
     if (!api?.selfImprove) return;
     try {
       setSelfImproveLoading(true);
@@ -187,7 +221,7 @@ export function ConfigPage({ onBack }: { onBack?: () => void }) {
       if (statusRes?.success) setSelfImproveEnabled(!!statusRes.enabled);
       if (historyRes?.success) setSelfImproveHistory(historyRes.history || []);
       if (backupsRes?.success) setSelfImproveBackups(backupsRes.backups || []);
-    } catch (e) {
+    } catch {
       // 忽略
     } finally {
       setSelfImproveLoading(false);
@@ -197,16 +231,16 @@ export function ConfigPage({ onBack }: { onBack?: () => void }) {
   useEffect(() => {
     loadSelfImproveStatus();
     // 加载当前语种偏好
-    const api0 = (window as any).electronAPI;
+    const api0 = window.electronAPI;
     if (api0?.i18n?.getLocale) {
-      api0.i18n.getLocale().then((r: any) => {
+      api0.i18n.getLocale().then((r: { success?: boolean; locale?: string }) => {
         if (r?.success && r.locale) setLocaleState(r.locale);
       }).catch(() => {});
     }
   }, []);
 
   const handleToggleSelfImprove = async () => {
-    const api = (window as any).electronAPI;
+    const api = window.electronAPI;
     if (!api?.selfImprove) {
       setMessage('当前环境不支持自我改进（需 Electron 桌面端）');
       clearMessageLater(4000);
@@ -225,7 +259,7 @@ export function ConfigPage({ onBack }: { onBack?: () => void }) {
   };
 
   const handleRollback = async (backupPath: string) => {
-    const api = (window as any).electronAPI;
+    const api = window.electronAPI;
     if (!api?.selfImprove) return;
     const res = await api.selfImprove.rollback(backupPath);
     if (res?.success) {
@@ -239,7 +273,7 @@ export function ConfigPage({ onBack }: { onBack?: () => void }) {
 
   // F2: 立即执行一次 evolve cycle（含 tsc + vitest 护栏，失败自动回滚）
   const handleRunEvolve = async () => {
-    const api = (window as any).electronAPI;
+    const api = window.electronAPI;
     if (!api?.selfImprove?.run) {
       setEvolveResult({ type: 'error', text: '当前环境不支持自我改进执行（需 Electron 桌面端）' });
       return;
@@ -275,11 +309,11 @@ export function ConfigPage({ onBack }: { onBack?: () => void }) {
 
   // D-MCP: 加载 MCP 市场数据
   const loadMcpMarketplace = async () => {
-    const isE = typeof window !== 'undefined' && !!(window as any).electronAPI;
+    const isE = typeof window !== 'undefined' && !!window.electronAPI;
     setMcpLoading(true);
     try {
       if (isE) {
-        const api = (window as any).electronAPI;
+        const api = window.electronAPI;
         if (api?.mcp) {
           const [listRes, installedRes, statsRes] = await Promise.all([
             api.mcp.listMarketplace(),
@@ -294,7 +328,7 @@ export function ConfigPage({ onBack }: { onBack?: () => void }) {
           }
           if (statsRes?.success) {
             const { success, ...rest } = statsRes;
-            setMcpStats(rest as any);
+            setMcpStats(rest as McpStatsInfo);
           }
         }
       } else {
@@ -311,7 +345,7 @@ export function ConfigPage({ onBack }: { onBack?: () => void }) {
         }
         if (statsRes?.success) {
           const { success, ...rest } = statsRes;
-          setMcpStats(rest as any);
+          setMcpStats(rest as McpStatsInfo);
         }
       }
     } catch {
@@ -327,12 +361,12 @@ export function ConfigPage({ onBack }: { onBack?: () => void }) {
 
   // D-MCP: 安装/卸载/启停 插件
   const handleMcpAction = async (action: 'install' | 'uninstall' | 'enable' | 'disable', pluginId: string) => {
-    const isE = typeof window !== 'undefined' && !!(window as any).electronAPI;
+    const isE = typeof window !== 'undefined' && !!window.electronAPI;
     setMcpAction(`${action}:${pluginId}`);
     try {
-      let res: any;
+      let res: McpActionResult;
       if (isE) {
-        const api = (window as any).electronAPI;
+        const api = window.electronAPI;
         if (!api?.mcp) return;
         if (action === 'install') res = await api.mcp.installPlugin(pluginId);
         else if (action === 'uninstall') res = await api.mcp.uninstallPlugin(pluginId);
@@ -412,7 +446,7 @@ export function ConfigPage({ onBack }: { onBack?: () => void }) {
   const handleDeleteProvider = async (provider: string) => {
     setDeletingProvider(provider);
     try {
-      const api = (window as any).electronAPI;
+      const api = window.electronAPI;
       if (api?.config?.unified?.removeProfile) {
         // 调用后端删除 profile
         const result = await api.config.unified.removeProfile(provider);
@@ -440,8 +474,8 @@ export function ConfigPage({ onBack }: { onBack?: () => void }) {
       } else {
         setMessage('当前环境不支持删除配置');
       }
-    } catch (err: any) {
-      setMessage(`删除失败：${err.message || err}`);
+    } catch (err: unknown) {
+      setMessage(`删除失败：${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setDeletingProvider(null);
       setConfirmDelete(null);
@@ -928,7 +962,7 @@ export function ConfigPage({ onBack }: { onBack?: () => void }) {
               <button
                 key={l.key}
                 onClick={async () => {
-                  const api = (window as any).electronAPI;
+                  const api = window.electronAPI;
                   if (!api?.i18n?.setLocale) return;
                   const r = await api.i18n.setLocale(l.key);
                   if (r?.success) {

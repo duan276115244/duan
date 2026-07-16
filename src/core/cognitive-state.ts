@@ -89,7 +89,9 @@ export class CognitiveState {
       if (typeof data.creativity === 'number') this.creativity = data.creativity;
       if (Array.isArray(data.moodHistory)) this.moodHistory = data.moodHistory;
       if (Array.isArray(data.thoughtStream)) this.thoughtStream = data.thoughtStream;
-    } catch {}
+    } catch (e) {
+      console.warn('[CognitiveState] 加载认知状态失败:', e instanceof Error ? e.message : String(e));
+    }
   }
 
   getState(): CognitiveStateSnapshot {

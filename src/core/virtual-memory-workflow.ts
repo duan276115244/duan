@@ -142,7 +142,7 @@ export class VirtualMemoryWorkflow {
     };
 
     this.tasks.set(task.id, task);
-    this.persistTodoFile();
+    void this.persistTodoFile();
 
     this.log.info('任务已添加', { taskId: task.id, description: description.substring(0, 50) });
     EventBus.getInstance().emitSync('vm.task.added', { taskId: task.id, description });
@@ -167,7 +167,7 @@ export class VirtualMemoryWorkflow {
       task.failureReason = failureReason;
     }
 
-    this.persistTodoFile();
+    void this.persistTodoFile();
 
     this.log.info('任务状态已更新', { taskId, status });
     EventBus.getInstance().emitSync('vm.task.updated', { taskId, status });

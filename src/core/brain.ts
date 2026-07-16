@@ -180,6 +180,8 @@ export class Brain {
     lastInteractionTime: number;
     pendingClarification: boolean;
   }> = new Map();
+  /** 对话状态最大条目数，超过时 FIFO 淘汰最旧会话 */
+  private conversationStateMaxSize = 100;
 
   constructor(dbPath: string = './data/brain.json') {
     this.dbPath = dbPath;
@@ -524,10 +526,11 @@ export class Brain {
 
   /** 异步处理（非阻塞） */
   async processAsync(input: string, context?: ConversationMessage[]): Promise<{ response: string; metadata: Record<string, unknown> }> {
-    return new Promise((resolve) => {
-      setImmediate(async () => {
-        const result = await this.processEnhanced(input);
-        resolve({ response: result.response, metadata: { ...result } });
+    return new Promise((resolve, reject) => {
+      setImmediate(() => {
+        void this.processEnhanced(input)
+          .then(result => resolve({ response: result.response, metadata: { ...result } }))
+          .catch(reject);
       });
     });
   }
@@ -551,6 +554,11 @@ export class Brain {
     }
 
     this.conversationState.set(sessionId, state);
+    // FIFO 淘汰：超过上限时删除最旧的会话状态
+    if (this.conversationState.size > this.conversationStateMaxSize) {
+      const oldestKey = this.conversationState.keys().next().value;
+      if (oldestKey) this.conversationState.delete(oldestKey);
+    }
   }
 
   /** 获取对话状态 */

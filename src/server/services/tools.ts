@@ -52,11 +52,19 @@ export const tools: ToolDef[] = [
         const context = vm.createContext(sandbox);
         const script = new vm.Script(`(async () => { ${code} })()`, { filename: 'code-execute.js' });
         const promise = script.runInContext(context, { timeout: 5000 }) as Promise<unknown>;
-        const result = await Promise.race([
-          promise,
-          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('代码执行超时（10秒）')), 10000)),
-        ]);
-        return JSON.stringify(result, null, 2);
+        // 定时器泄漏修复：Promise.race 完成后立即清理 setTimeout，避免 10s 内定时器句柄滞留
+        let timeoutId: ReturnType<typeof setTimeout> | undefined;
+        try {
+          const result = await Promise.race([
+            promise,
+            new Promise<never>((_, reject) => {
+              timeoutId = setTimeout(() => reject(new Error('代码执行超时（10秒）')), 10000);
+            }),
+          ]);
+          return JSON.stringify(result, null, 2);
+        } finally {
+          if (timeoutId) clearTimeout(timeoutId);
+        }
       } catch (err) {
         return `执行错误: ${errMsg(err)}`;
       }

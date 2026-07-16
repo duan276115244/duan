@@ -1,4 +1,4 @@
-import { create } from 'zustand';
+﻿import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import type { Message, Conversation, SystemStatus, ToolInfo, BackendConfig, Theme } from '@/types';
 
@@ -161,11 +161,14 @@ export const useChatStore = create<ChatState>()(
       // P2 修复：创建新对象而非直接突变，保持状态不可变性
       onRehydrateStorage: () => (state) => {
         if (!state?.conversations) return;
-        state.conversations = state.conversations.map((conv: any) => ({
-          ...conv,
-          createdAt: conv.createdAt && typeof conv.createdAt === 'string' ? new Date(conv.createdAt) : conv.createdAt,
-          updatedAt: conv.updatedAt && typeof conv.updatedAt === 'string' ? new Date(conv.updatedAt) : conv.updatedAt,
-        }));
+        state.conversations = state.conversations.map((conv) => {
+          const c = conv as unknown as { createdAt: string | Date; updatedAt: string | Date };
+          return {
+            ...conv,
+            createdAt: c.createdAt && typeof c.createdAt === 'string' ? new Date(c.createdAt) : c.createdAt,
+            updatedAt: c.updatedAt && typeof c.updatedAt === 'string' ? new Date(c.updatedAt) : c.updatedAt,
+          };
+        }) as Conversation[];
       },
     }
   )

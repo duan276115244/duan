@@ -1,3 +1,23 @@
+/**
+ * 安装包构建脚本 — make-package.cjs
+ *
+ * v20.0 明文源码模式：核心源码直接以明文形式打包，无需 _decrypt.cjs 解密步骤。
+ * 安装包含：
+ *   - 完整 src/ 源码（明文 .ts）
+ *   - install.bat（一键安装依赖）
+ *   - duan.bat（一键启动控制台）
+ *   - duan-web.bat（一键启动 Web 控制台）
+ *   - README-INSTALL.txt（安装指南）
+ *
+ * 排除：
+ *   - node_modules / .git / dist 等大目录
+ *   - 优化升级方案/自我介绍/追踪文件等文档
+ *   - 临时调试脚本
+ *   - Windows 保留名文件
+ *   - 加密备份文件 (.ts.enc / .js.enc)
+ *   - .env / config.json 等敏感配置
+ */
+
 const fs = require('fs');
 const path = require('path');
 
@@ -29,6 +49,9 @@ const EXCLUDE_DIRS = [
   'output',
   'screenshots',
   'workflows',
+  '__pycache__',
+  '.cache',
+  'tmp',
 ];
 
 // ===== 文件排除模式（文件名匹配）=====
@@ -50,7 +73,6 @@ const EXCLUDE_FILE_NAMES = [
   // 临时文件与测试数据
   'test-write.txt',
   'test_out.json', 'test_output.json',
-  'output',
 
   // 配置文件（本地）
   'config.json', '.env', '.env.local',
@@ -63,6 +85,16 @@ const EXCLUDE_FILE_NAMES = [
 
   // 加密备份
   '.enc.bak', '.zip.bak',
+
+  // 临时修复脚本
+  'fix_any.mjs',
+  'fix-any-batch1.cjs', 'fix-any-browserpanel.cjs', 'fix-any-chatarea.cjs', 'fix-any-useapi.cjs',
+  '_fix_worktree.js',
+
+  // 开发者专用脚本
+  'encrypt-core.cjs', 'backup-source.cjs', 'publish-github.cjs',
+  'find-dead-code.mjs', 'capability-check.mjs',
+  '_cleanup_git.cjs',
 ];
 
 // ===== 按扩展名排除 =====
@@ -72,6 +104,7 @@ const EXCLUDE_EXTENSIONS = new Set([
   '.dmg', '.pkg', '.rpm', '.deb',
   '.nsis', '.asar',
   '.7z', '.rar', '.tar',
+  '.enc', // 加密文件
 ]);
 
 // ===== 按文件名模式（通配符）排除 =====
@@ -96,6 +129,8 @@ const EXCLUDE_PATTERNS = [
   // 开发者发布脚本
   'encrypt-core', 'backup-source', 'publish-github',
   'find-dead-code', 'capability-check',
+  // 临时文件
+  '.ts.tmp', '.ts.bak',
 ];
 
 function shouldExcludeDir(dirName) {
@@ -109,6 +144,7 @@ function shouldExcludeFile(fileName) {
   const lowerName = fileName.toLowerCase();
   // 精确匹配
   if (EXCLUDE_FILE_NAMES.includes(fileName)) return true;
+  if (EXCLUDE_FILE_NAMES.includes(lowerName)) return true;
 
   // 扩展名检查
   const ext = path.extname(fileName).toLowerCase();
@@ -150,19 +186,19 @@ function copyDir(src, dest) {
   }
 }
 
-// 为安装包写入自定义 package.json（包含 _decrypt.cjs 调用）
+// 为安装包写入 package.json（明文模式，无 _decrypt.cjs 调用）
 function writePackageJson(dir) {
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+  // 安装包的 scripts 不需要 _decrypt.cjs
   pkg.scripts = {
-    'duan': 'node _decrypt.cjs && tsx src/entry.ts',
-    'duan:install': 'node _decrypt.cjs && npm install',
-    'duan:web': 'node _decrypt.cjs && tsx src/web-server.ts',
+    'duan': 'tsx src/entry.ts',
+    'duan:install': 'npm install',
+    'duan:web': 'tsx src/web-server.ts',
     'duan:web-ui': 'npx serve web',
-    'duan:full': 'concurrently \"npm run duan:web\" \"npm run duan:web-ui\"',
-    'duan:desktop': 'node _decrypt.cjs && electron .',
-    'duan:start': 'node _decrypt.cjs && node dist/entry.js',
-    'duan:build': 'node _decrypt.cjs && node scripts/build.cjs',
-    'duan:package': 'node scripts/build.cjs',
+    'duan:full': 'concurrently "npm run duan:web" "npm run duan:web-ui"',
+    'duan:desktop': 'electron .',
+    'duan:start': 'node dist/entry.js',
+    'duan:build': 'node scripts/build.cjs',
     'dev': 'npm run duan',
     'dev:web-server': 'npm run duan:web',
     'dev:web': 'npm run duan:web-ui',
@@ -172,13 +208,12 @@ function writePackageJson(dir) {
     'build': 'npm run duan:build',
     'build:frontend': 'cd frontend && npm run build',
     'build:all': 'npm run build && npm run build:frontend',
-    'pack:desktop': 'node _decrypt.cjs && electron-builder --win',
-    'typecheck': 'node _decrypt.cjs && tsc --noEmit --skipLibCheck',
-    'lint': 'node _decrypt.cjs && eslint src/ desktop/ --max-warnings 100',
-    'lint:fix': 'node _decrypt.cjs && eslint src/ desktop/ --fix',
-    'test': 'node _decrypt.cjs && vitest run',
-    'test:watch': 'node _decrypt.cjs && vitest',
-    'test:coverage': 'node _decrypt.cjs && vitest run --coverage',
+    'typecheck': 'tsc --noEmit --skipLibCheck',
+    'lint': 'eslint src/ desktop/ --max-warnings 100',
+    'lint:fix': 'eslint src/ desktop/ --fix',
+    'test': 'vitest run',
+    'test:watch': 'vitest',
+    'test:coverage': 'vitest run --coverage',
     'verify:all': 'npm run typecheck && npm run lint && npm run test',
     'postinstall': 'echo Installation complete! Run npm run duan to start Duan Agent',
     'prepublishOnly': 'npm run build',
@@ -187,16 +222,16 @@ function writePackageJson(dir) {
   fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify(pkg, null, 2));
 }
 
-// 为安装包写入自定义 install.bat（包含 _decrypt.cjs 调用）
+// 为安装包写入 install.bat（明文模式）
 function writeInstallBat(dir) {
   const content = [
     '@echo off',
-    'title Duan Agent v19 - Installation',
+    'title Duan Agent v20 - Installation',
     'setlocal enabledelayedexpansion',
     '',
     'echo.',
     'echo ========================================',
-    'echo    Duan Agent v19 - Installation',
+    'echo    Duan Agent v20 - Installation',
     'echo ========================================',
     'echo.',
     '',
@@ -215,19 +250,11 @@ function writeInstallBat(dir) {
     ')',
     '',
     'for /f "tokens=2 delims=v " %%i in (\'node -v\') do set NODE_VER=%%i',
-    'echo [1/3] Node.js detected: v!NODE_VER!',
+    'echo [1/2] Node.js detected: v!NODE_VER!',
     '',
-    'rem === 2. Prepare core code ===',
+    'rem === 2. Install dependencies ===',
     'echo.',
-    'echo [2/3] Preparing environment...',
-    'node _decrypt.cjs',
-    'if %errorlevel% neq 0 (',
-    '    echo [WARN] Core code preparation encountered issues, trying to continue...',
-    ')',
-    '',
-    'rem === 3. Install dependencies ===',
-    'echo.',
-    'echo [3/3] Installing dependencies (First run may take 2-5 minutes)...',
+    'echo [2/2] Installing dependencies (First run may take 2-5 minutes)...',
     'echo.',
     'call npm install',
     'if %errorlevel% neq 0 (',
@@ -249,6 +276,7 @@ function writeInstallBat(dir) {
     'echo.',
     'echo To start the agent:',
     'echo   Double-click duan.bat          - Console mode',
+    'echo   Double-click duan-web.bat      - Web console mode',
     'echo   Or run:  npm run duan          - Console mode',
     'echo   Or run:  npm run duan:web      - Web console',
     'echo   Or run:  npm run duan:desktop  - Desktop app',
@@ -262,27 +290,19 @@ function writeInstallBat(dir) {
   fs.writeFileSync(path.join(dir, 'install.bat'), content);
 }
 
-// 为安装包写入自定义 duan.bat
+// 为安装包写入 duan.bat（明文模式）
 function writeDuanBat(dir) {
   const content = [
     '@echo off',
-    'title Duan Agent v19',
+    'title Duan Agent v20',
     'setlocal',
     '',
     'echo.',
     'echo ========================================',
-    'echo    Duan Agent v19 - Super AI Assistant',
+    'echo    Duan Agent v20 - Super AI Assistant',
     'echo    Starting...',
     'echo ========================================',
     'echo.',
-    '',
-    'rem === 1. Ensure core code is prepared ===',
-    'node _decrypt.cjs',
-    '',
-    'rem === 2. Start the main program ===',
-    'if %errorlevel% neq 0 (',
-    '    echo [WARN] Core code preparation had issues, trying to start directly...',
-    ')',
     '',
     'echo.',
     'echo Start time: %date% %time%',
@@ -304,22 +324,21 @@ function writeDuanBat(dir) {
   fs.writeFileSync(path.join(dir, 'duan.bat'), content);
 }
 
-// 为安装包写入自定义 duan-web.bat
+// 为安装包写入 duan-web.bat（明文模式）
 function writeDuanWebBat(dir) {
   const content = [
     '@echo off',
-    'title Duan Agent v19 - Web Console',
+    'title Duan Agent v20 - Web Console',
     'setlocal',
     '',
     'echo.',
     'echo ========================================',
-    'echo    Duan Agent v19 - Web Console',
+    'echo    Duan Agent v20 - Web Console',
     'echo ========================================',
     'echo.',
     'echo Starting web service...',
     'echo.',
     '',
-    'node _decrypt.cjs',
     'call npx tsx src/web-server.ts',
     '',
     'echo.',
@@ -331,20 +350,10 @@ function writeDuanWebBat(dir) {
   fs.writeFileSync(path.join(dir, 'duan-web.bat'), content);
 }
 
-// 复制 _decrypt.cjs（本地加密工具，不出现在公开 Git 仓库但在安装包中）
-function copyDecryptScript(dir) {
-  const src = path.join(ROOT, '_decrypt.cjs');
-  const dst = path.join(dir, '_decrypt.cjs');
-  if (fs.existsSync(src)) {
-    fs.copyFileSync(src, dst);
-    return true;
-  }
-  return false;
-}
-
 function main() {
   console.log('========================================');
-  console.log('  Duan Agent - Distribution Package Builder');
+  console.log('  Duan Agent v20 - Distribution Package Builder');
+  console.log('  Mode: Plaintext source (no decryption needed)');
   console.log('========================================');
   console.log();
 
@@ -358,49 +367,45 @@ function main() {
     }
   }
 
-  // 2. 复制源码（排除开发文档、日志、Windows 保留名）
-  console.log('[2/5] Copying project source...');
+  // 2. 复制源码（排除开发文档、日志、Windows 保留名、加密文件）
+  console.log('[2/5] Copying project source (plaintext mode)...');
   copyDir(ROOT, PACKAGE_DIR);
 
-  // 3. 显式添加 _decrypt.cjs（因被 .gitignore 排除）
-  console.log('[3/5] Adding decrypt script...');
-  if (copyDecryptScript(PACKAGE_DIR)) {
-    console.log('  OK  _decrypt.cjs');
-  } else {
-    console.log('  WARN _decrypt.cjs not found in project root');
-  }
-
-  // 4. 为安装包写入自定义脚本和 package.json（包含 _decrypt.cjs 调用）
-  console.log('[4/5] Writing installer scripts...');
+  // 3. 为安装包写入自定义脚本和 package.json（明文模式，无 _decrypt.cjs）
+  console.log('[3/5] Writing installer scripts (plaintext mode)...');
   writePackageJson(PACKAGE_DIR);
   writeInstallBat(PACKAGE_DIR);
   writeDuanBat(PACKAGE_DIR);
   writeDuanWebBat(PACKAGE_DIR);
   console.log('  OK  install.bat, duan.bat, duan-web.bat, package.json created');
 
-  // 5. 验证关键文件
-  console.log('[5/5] Verifying required files...');
+  // 4. 验证关键文件
+  console.log('[4/5] Verifying required files...');
   const required = [
     'install.bat', 'duan.bat', 'duan-web.bat',
-    '_decrypt.cjs', 'package.json', 'README.md'
+    'package.json', 'README.md', 'tsconfig.json',
+    'src/entry.ts', 'src/core/bootstrap.ts',
   ];
+  let allOk = true;
   for (const f of required) {
     if (fs.existsSync(path.join(PACKAGE_DIR, f))) {
       console.log('  OK  ' + f);
     } else {
-      console.log('  WARN ' + f + ' (not copied)');
+      console.log('  WARN ' + f + ' (not found)');
+      allOk = false;
     }
   }
 
-  // 6. 创建安装说明（英文）
+  // 5. 创建安装说明
+  console.log('[5/5] Creating installation guide...');
   const guide = path.join(PACKAGE_DIR, 'README-INSTALL.txt');
   fs.writeFileSync(guide, [
     '========================================',
-    '  Duan Agent - Installation Guide',
+    '  Duan Agent v20 - Installation Guide',
     '========================================',
     '',
     'System Requirements:',
-    '  - Windows 10 / 11',
+    '  - Windows 10 / 11 (or Linux: UOS / Kylin)',
     '  - Node.js 18 or higher (https://nodejs.org/)',
     '  - At least 2GB RAM',
     '',
@@ -425,21 +430,26 @@ function main() {
     '  - Need updates: download the new version package',
     '',
     '========================================',
-    '  Duan Agent (c) Duan Xiansheng',
+    '  Duan Agent v20.0 (c) Duan Xiansheng',
     '========================================',
     '',
   ].join('\r\n'));
   console.log('  OK  README-INSTALL.txt created');
 
-  // 7. 统计文件
+  // 6. 统计文件
   let totalFiles = 0;
   let totalSize = 0;
+  let tsFiles = 0;
   function walk(dir) {
     const entries = fs.readdirSync(dir, { withFileTypes: true });
     for (const entry of entries) {
       const p = path.join(dir, entry.name);
       if (entry.isDirectory()) walk(p);
-      else { totalFiles++; totalSize += fs.statSync(p).size; }
+      else {
+        totalFiles++;
+        totalSize += fs.statSync(p).size;
+        if (entry.name.endsWith('.ts')) tsFiles++;
+      }
     }
   }
   walk(PACKAGE_DIR);
@@ -447,7 +457,8 @@ function main() {
   console.log();
   console.log('========================================');
   console.log('  Package directory: duan-installer');
-  console.log('  File count:        ' + totalFiles);
+  console.log('  Total files:       ' + totalFiles);
+  console.log('  TypeScript files:  ' + tsFiles);
   console.log('  Total size:        ' + (totalSize / 1024 / 1024).toFixed(2) + ' MB');
   console.log('========================================');
   console.log();

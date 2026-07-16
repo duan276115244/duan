@@ -8,6 +8,7 @@ import type { LoopEvent, TerminalReason } from './agent-loop-types.js';
 import type { SelfAwareness } from './self-awareness.js';
 import { CognitiveState } from './cognitive-state.js';
 import { EventBus } from './event-bus.js';
+import { mapWithConcurrency } from '../utils/concurrency.js';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -728,13 +729,14 @@ ${(worker.config.allowedTools || roleConfig.allowedTools) ? `你只能使用以�
 
   /**
    * 并行派发多个子任务（v2）
+   * 限制并发数为 3，避免同时发起过多 LLM 调用导致 API 限流或内存压力
    */
   dispatchParallel(
     tasks: Array<{ agent: string; prompt: string }>,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     llmCaller: (messages: Array<{ role: string; content: string }>, tools?: any[]) => Promise<{ content: string; toolCalls?: any[] }>,
   ): Promise<SubAgentState[]> {
-    return Promise.all(tasks.map(t => this.dispatch(t.agent, t.prompt, llmCaller)));
+    return mapWithConcurrency(tasks, 3, t => this.dispatch(t.agent, t.prompt, llmCaller));
   }
 
   /**

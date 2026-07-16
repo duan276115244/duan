@@ -1,6 +1,7 @@
-import { useState, useEffect, useMemo } from 'react';
-import { MessageCircle, Settings, Trash2, X, Search, Sparkles, PanelLeftClose, PanelLeftOpen, BarChart3, Layers, Info, Radio, Users, Server, Gauge } from 'lucide-react';
+﻿import { useState, useEffect, useMemo } from 'react';
+import { MessageCircle, Settings, Trash2, X, Search, Sparkles, PanelLeftClose, PanelLeftOpen, BarChart3, Layers, Info, Radio, Users, Server, Gauge, Workflow } from 'lucide-react';
 import { useChatStore } from '@/store/chatStore';
+import { useShallow } from 'zustand/react/shallow';
 
 interface SidebarProps {
   onToggle: () => void;
@@ -11,6 +12,7 @@ interface SidebarProps {
   onOpenAbout?: () => void;
   onOpenChannels?: () => void;
   onOpenSubAgent?: () => void;
+  onOpenWorkflow?: () => void;
   onOpenMcp?: () => void;
   onOpenCapability?: () => void;
   collapsed?: boolean;
@@ -25,6 +27,7 @@ const NAV_ITEMS = [
   { id: 'dashboard', label: '仪表盘', icon: BarChart3 },
   { id: 'capability', label: '能力评估', icon: Gauge },
   { id: 'subagent', label: '多 Agent 编排', icon: Users },
+  { id: 'workflow', label: '工作流', icon: Workflow },
   { id: 'mcp', label: 'MCP 管理', icon: Server },
   { id: 'skills', label: '技能管理', icon: Layers },
   { id: 'channels', label: '消息通道', icon: Radio },
@@ -41,6 +44,7 @@ export function Sidebar({
   onOpenAbout,
   onOpenChannels,
   onOpenSubAgent,
+  onOpenWorkflow,
   onOpenMcp,
   onOpenCapability,
   collapsed = false,
@@ -48,7 +52,15 @@ export function Sidebar({
   activeNav = 'chat',
   onNavChange,
 }: SidebarProps) {
-  const { conversations: allConversations, currentConversationId, setCurrentConversation, createConversation, deleteConversation, setSearchQuery, searchQuery } = useChatStore();
+  const { conversations: allConversations, currentConversationId, setCurrentConversation, createConversation, deleteConversation, setSearchQuery, searchQuery } = useChatStore(useShallow(s => ({
+    conversations: s.conversations,
+    currentConversationId: s.currentConversationId,
+    setCurrentConversation: s.setCurrentConversation,
+    createConversation: s.createConversation,
+    deleteConversation: s.deleteConversation,
+    setSearchQuery: s.setSearchQuery,
+    searchQuery: s.searchQuery,
+  })));
   const [hoveredConv, setHoveredConv] = useState<string | null>(null);
   const [searchFocused, setSearchFocused] = useState(false);
   const [hoveredNav, setHoveredNav] = useState<string | null>(null);
@@ -58,9 +70,9 @@ export function Sidebar({
   useEffect(() => {
     const fetchStatus = async () => {
       try {
-        const isE = typeof window !== 'undefined' && !!(window as any).electronAPI;
+        const isE = typeof window !== 'undefined' && !!window.electronAPI;
         if (isE) {
-          const api = (window as any).electronAPI;
+          const api = window.electronAPI;
           if (api?.system?.status) {
             const data = await api.system.status();
             setSysStatus({
@@ -121,6 +133,7 @@ export function Sidebar({
       case 'channels': onOpenChannels?.(); break;
       case 'about': onOpenAbout?.(); break;
       case 'subagent': onOpenSubAgent?.(); break;
+      case 'workflow': onOpenWorkflow?.(); break;
       case 'mcp': onOpenMcp?.(); break;
       case 'capability': onOpenCapability?.(); break;
       case 'chat':

@@ -90,14 +90,14 @@ export function JarvisMode({ lastAssistantMessage, onSend, isStreaming, streamin
           setStatus('listening');
         }
       }
-    } catch {}
+    } catch { /* ignore */ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   // 状态变化时保存
   useEffect(() => {
     try {
       localStorage.setItem(JARVIS_STORAGE_KEY, JSON.stringify({ isActive, continuousMode, autoSpeak }));
-    } catch {}
+    } catch { /* ignore */ }
   }, [isActive, continuousMode, autoSpeak]);
 
   // V19 贾维斯增强：唤醒词检测 — 语音说"段先生"/"贾维斯"即可激活，无需手动点击
@@ -110,7 +110,7 @@ export function JarvisMode({ lastAssistantMessage, onSend, isStreaming, streamin
           setIsActive(true);
           setStatus('listening');
         }
-      } catch {}
+      } catch { /* ignore */ }
     },
   });
 

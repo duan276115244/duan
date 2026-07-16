@@ -123,6 +123,14 @@ test-task*.js
 test_*.json
 test-write.txt
 
+# ===== 临时修复脚本（v20 升级过程中的临时文件）=====
+fix_any.mjs
+fix-any-*.cjs
+_fix_worktree.js
+*.ts.tmp
+*.ts.bak
+*.js.bak
+
 # ===== self-evolve 自动备份文件（运行时产物，不入库）=====
 *.evolve.backup.*
 *.evolve.backup

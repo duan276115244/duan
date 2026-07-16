@@ -12,10 +12,11 @@
  *
  * 设计：glass-effect 卡片 + lucide-react 图标 + 现有设计 token
  */
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   ArrowLeft, Users, Activity, Share2, Play, Loader2, CircleDot,
   CheckCircle2, AlertCircle, Clock, RefreshCw, ChevronDown, ChevronRight, Zap,
+  Plus, History, Trash2, UserPlus, Save, XCircle,
 } from 'lucide-react';
 import { useSubAgentStream, type ActiveAgent, type SubAgentStatus, type SubAgentEvent } from '../hooks/useSubAgentStream';
 import { SubAgentDAG, buildDAGFromMembers, type DAGNode, type DAGEdge } from './SubAgentDAG';
@@ -24,17 +25,47 @@ interface SubAgentPanelProps {
   onBack?: () => void;
 }
 
-type Tab = 'agents' | 'team' | 'board';
+type Tab = 'agents' | 'team' | 'board' | 'custom' | 'history';
 
-// 团队模板（与后端 subagent-routes.ts 保持一致）
+// 团队模板（与后端 subagent-routes.ts GET /team-templates 返回结构一致）
+interface TeamMember {
+  role: string;
+  name: string;
+  goal?: string;
+  priority?: number;
+  tokenBudget?: number;
+  allowedTools?: string[];
+}
+
 interface TeamTemplate {
   id: string;
   name: string;
   description: string;
-  members?: Array<{ role: string; name: string }>;
+  members?: TeamMember[];
+  custom?: boolean;
+  maxConcurrent?: number;
+  useWorktreeIsolation?: boolean;
 }
 
-// 内置模板定义（与后端 routes 的 templates 列表对齐，附带 DAG 节点信息）
+/** 执行详情中的成员状态 */
+interface ExecutionMember {
+  name?: string;
+  role?: string;
+  status?: string;
+  tokenUsage?: number;
+}
+
+/** 执行详情（getExecution 返回） */
+interface ExecutionDetail {
+  id?: string;
+  teamName?: string;
+  members?: ExecutionMember[];
+  success?: boolean;
+  duration?: number;
+  [key: string]: unknown;
+}
+
+// 内置模板 fallback（后端不可用时使用；后端有 3 个：code-dev/research/bug-fix）
 const BUILTIN_TEMPLATES: TeamTemplate[] = [
   {
     id: 'code-dev',
@@ -57,7 +88,23 @@ const BUILTIN_TEMPLATES: TeamTemplate[] = [
       { role: 'writer', name: 'writer-01' },
     ],
   },
+  {
+    id: 'bug-fix',
+    name: 'Bug 修复团队',
+    description: '系统化 Bug 修复：复现 → 定位 → 修复 → 验证',
+    members: [
+      { role: 'analyst', name: 'analyst-01' },
+      { role: 'implementer', name: 'implementer-01' },
+      { role: 'tester', name: 'tester-01' },
+    ],
+  },
 ];
+
+// 自定义团队成员角色选项
+const TEAM_ROLES = ['planner', 'implementer', 'reviewer', 'tester', 'researcher', 'writer', 'analyst', 'coordinator'];
+
+// 自定义团队可选工具列表
+const AVAILABLE_TOOLS = ['file_read', 'file_write', 'shell_execute', 'search_files', 'list_directory', 'web_search', 'web_fetch'];
 
 const STATUS_META: Record<SubAgentStatus, { label: string; color: string; icon: typeof CircleDot }> = {
   idle: { label: '空闲', color: '#64748b', icon: CircleDot },
@@ -70,7 +117,32 @@ const STATUS_META: Record<SubAgentStatus, { label: string; color: string; icon: 
 // ============ 主组件 ============
 export function SubAgentPanel({ onBack }: SubAgentPanelProps) {
   const [tab, setTab] = useState<Tab>('agents');
-  const { events, activeAgents, boardEntries, connected, clearCompleted, startTeam } = useSubAgentStream();
+  const {
+    events, activeAgents, boardEntries, connected, clearCompleted, startTeam,
+    listTemplates, startCustomTeam, listHistory, getExecution,
+    listCustomTemplates, saveCustomTemplate, deleteCustomTemplate,
+  } = useSubAgentStream();
+
+  // 动态拉取团队模板（后端不可用时回退 BUILTIN_TEMPLATES）
+  const [templates, setTemplates] = useState<TeamTemplate[]>(BUILTIN_TEMPLATES);
+  useEffect(() => {
+    let cancelled = false;
+    listTemplates().then((t: TeamTemplate[]) => {
+      if (cancelled) return;
+      if (Array.isArray(t) && t.length > 0) {
+        setTemplates(t.map((item: TeamTemplate) => ({
+          id: item.id || item.name,
+          name: item.name || item.id,
+          description: item.description || '',
+          members: Array.isArray(item.members) ? item.members : undefined,
+          custom: item.custom,
+          maxConcurrent: item.maxConcurrent,
+          useWorktreeIsolation: item.useWorktreeIsolation,
+        })));
+      }
+    }).catch(() => { /* 回退到 BUILTIN_TEMPLATES */ });
+    return () => { cancelled = true; };
+  }, [listTemplates]);
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', backgroundColor: '#0a0e1a', color: '#e2e8f0' }}>
@@ -110,13 +182,26 @@ export function SubAgentPanel({ onBack }: SubAgentPanelProps) {
         <TabButton active={tab === 'agents'} onClick={() => setTab('agents')} icon={Activity} label="活跃 Agent" count={activeAgents.size} />
         <TabButton active={tab === 'team'} onClick={() => setTab('team')} icon={Users} label="团队执行" />
         <TabButton active={tab === 'board'} onClick={() => setTab('board')} icon={Share2} label="共享板" count={boardEntries.length} />
+        <TabButton active={tab === 'custom'} onClick={() => setTab('custom')} icon={Plus} label="自定义团队" />
+        <TabButton active={tab === 'history'} onClick={() => setTab('history')} icon={History} label="执行历史" />
       </div>
 
       {/* 内容区 */}
       <div style={{ flex: 1, overflow: 'auto', padding: '16px 20px 24px' }}>
         {tab === 'agents' && <AgentsTab activeAgents={activeAgents} events={events} onClearCompleted={clearCompleted} />}
-        {tab === 'team' && <TeamTab startTeam={startTeam} activeAgents={activeAgents} />}
+        {tab === 'team' && <TeamTab templates={templates} startTeam={startTeam} activeAgents={activeAgents} />}
         {tab === 'board' && <BoardTab entries={boardEntries} />}
+        {tab === 'custom' && (
+          <CustomTeamTab
+            startCustomTeam={startCustomTeam}
+            listCustomTemplates={listCustomTemplates as () => Promise<TeamTemplate[]>}
+            saveCustomTemplate={saveCustomTemplate as (template: unknown) => Promise<{ success?: boolean; template?: TeamTemplate; message?: string; error?: string } | null>}
+            deleteCustomTemplate={deleteCustomTemplate}
+          />
+        )}
+        {tab === 'history' && (
+          <ExecutionHistoryTab listHistory={listHistory} getExecution={getExecution as (id: string) => Promise<ExecutionDetail | null>} />
+        )}
       </div>
     </div>
   );
@@ -259,14 +344,14 @@ function AgentCard({ agent }: { agent: ActiveAgent }) {
 }
 
 // ============ Tab 2: 团队执行 ============
-function TeamTab({ startTeam, activeAgents }: { startTeam: (templateName: string, taskGoal: string, extraContext?: string) => Promise<{ success?: boolean; error?: string; message?: string }>; activeAgents: Map<string, ActiveAgent> }) {
+function TeamTab({ templates, startTeam, activeAgents }: { templates: TeamTemplate[]; startTeam: (templateName: string, taskGoal: string, extraContext?: string) => Promise<{ success?: boolean; error?: string; message?: string }>; activeAgents: Map<string, ActiveAgent> }) {
   const [selectedTemplate, setSelectedTemplate] = useState<string>('code-dev');
   const [taskGoal, setTaskGoal] = useState('');
   const [extraContext, setExtraContext] = useState('');
   const [launching, setLaunching] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  const template = BUILTIN_TEMPLATES.find(t => t.id === selectedTemplate) || BUILTIN_TEMPLATES[0];
+  const template = templates.find(t => t.id === selectedTemplate) || templates[0];
 
   // 构建 DAG 节点和边
   const { nodes, edges } = useMemo(() => {
@@ -316,7 +401,7 @@ function TeamTab({ startTeam, activeAgents }: { startTeam: (templateName: string
           <span style={{ fontSize: 13, fontWeight: 500, color: '#e2e8f0' }}>选择团队模板</span>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-          {BUILTIN_TEMPLATES.map(t => {
+          {templates.map(t => {
             const selected = t.id === selectedTemplate;
             return (
               <button
@@ -472,6 +557,457 @@ function BoardTab({ entries }: { entries: Array<{ agentName: string; role: strin
             <div style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.5, fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
               {entry.content.length > 500 ? entry.content.substring(0, 500) + '...' : entry.content}
             </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ============ Tab 4: 自定义团队 ============
+interface CustomTeamTabProps {
+  startCustomTeam: (config: unknown) => Promise<{ success?: boolean; message?: string; error?: string } | null>;
+  listCustomTemplates: () => Promise<TeamTemplate[]>;
+  saveCustomTemplate: (template: unknown) => Promise<{ success?: boolean; template?: TeamTemplate; message?: string; error?: string } | null>;
+  deleteCustomTemplate: (id: string) => Promise<{ success?: boolean; message?: string } | null>;
+}
+
+function CustomTeamTab({ startCustomTeam, listCustomTemplates, saveCustomTemplate, deleteCustomTemplate }: CustomTeamTabProps) {
+  const [teamName, setTeamName] = useState('');
+  const [teamDesc, setTeamDesc] = useState('');
+  const [maxConcurrent, setMaxConcurrent] = useState(3);
+  const [members, setMembers] = useState<TeamMember[]>([
+    { role: 'planner', name: 'planner-01', goal: '', priority: 5, tokenBudget: 8000, allowedTools: ['file_read', 'search_files'] },
+  ]);
+  const [savedTemplates, setSavedTemplates] = useState<TeamTemplate[]>([]);
+  const [launching, setLaunching] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // 加载已保存的自定义模板
+  useEffect(() => {
+    listCustomTemplates().then(t => { if (Array.isArray(t)) setSavedTemplates(t); }).catch(() => {});
+  }, [listCustomTemplates]);
+
+  const addMember = useCallback(() => {
+    setMembers(prev => [...prev, { role: 'implementer', name: `member-${String(prev.length + 1).padStart(2, '0')}`, goal: '', priority: 5, tokenBudget: 8000, allowedTools: [] }]);
+  }, []);
+
+  const removeMember = useCallback((idx: number) => {
+    setMembers(prev => prev.filter((_, i) => i !== idx));
+  }, []);
+
+  const updateMember = useCallback((idx: number, field: keyof TeamMember, value: unknown) => {
+    setMembers(prev => prev.map((m, i) => i === idx ? { ...m, [field]: value } : m));
+  }, []);
+
+  const toggleTool = useCallback((idx: number, tool: string) => {
+    setMembers(prev => prev.map((m, i) => {
+      if (i !== idx) return m;
+      const tools = m.allowedTools || [];
+      return { ...m, allowedTools: tools.includes(tool) ? tools.filter(t => t !== tool) : [...tools, tool] };
+    }));
+  }, []);
+
+  const buildConfig = useCallback(() => ({
+    name: teamName.trim() || `custom-team-${Date.now().toString(36)}`,
+    description: teamDesc.trim(),
+    members: members.map(m => ({
+      role: m.role,
+      name: m.name,
+      goal: m.goal || undefined,
+      priority: m.priority,
+      tokenBudget: m.tokenBudget,
+      allowedTools: m.allowedTools && m.allowedTools.length > 0 ? m.allowedTools : undefined,
+    })),
+    maxConcurrent,
+  }), [teamName, teamDesc, members, maxConcurrent]);
+
+  const handleLaunch = async () => {
+    if (members.length === 0) {
+      setMessage({ type: 'error', text: '至少需要 1 个成员' });
+      return;
+    }
+    setLaunching(true);
+    setMessage(null);
+    try {
+      const result = await startCustomTeam(buildConfig());
+      if (result?.success) {
+        setMessage({ type: 'success', text: `自定义团队「${buildConfig().name}」已启动，请前往「活跃 Agent」查看进度` });
+      } else {
+        setMessage({ type: 'error', text: result?.error || '启动失败' });
+      }
+    } catch (err: unknown) {
+      setMessage({ type: 'error', text: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setLaunching(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if (members.length === 0) {
+      setMessage({ type: 'error', text: '至少需要 1 个成员才能保存' });
+      return;
+    }
+    setSaving(true);
+    setMessage(null);
+    try {
+      const result = await saveCustomTemplate(buildConfig());
+      if (result?.success) {
+        setMessage({ type: 'success', text: result.message || '模板已保存' });
+        // 刷新列表
+        const t = await listCustomTemplates();
+        if (Array.isArray(t)) setSavedTemplates(t);
+      } else {
+        setMessage({ type: 'error', text: result?.error || '保存失败' });
+      }
+    } catch (err: unknown) {
+      setMessage({ type: 'error', text: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    const result = await deleteCustomTemplate(id);
+    if (result?.success) {
+      setSavedTemplates(prev => prev.filter(t => t.id !== id));
+    }
+  };
+
+  const handleLoad = (tpl: TeamTemplate) => {
+    setTeamName(tpl.name || '');
+    setTeamDesc(tpl.description || '');
+    setMaxConcurrent(tpl.maxConcurrent || 3);
+    if (Array.isArray(tpl.members)) {
+      setMembers(tpl.members.map((m: TeamMember) => ({
+        role: m.role || 'implementer',
+        name: m.name || 'member-01',
+        goal: m.goal || '',
+        priority: m.priority ?? 5,
+        tokenBudget: m.tokenBudget ?? 8000,
+        allowedTools: Array.isArray(m.allowedTools) ? m.allowedTools : [],
+      })));
+    }
+  };
+
+  const inputStyle: React.CSSProperties = {
+    padding: '6px 8px', borderRadius: 6, fontSize: 11, fontFamily: 'inherit',
+    background: 'rgba(0,0,0,.2)', border: '1px solid rgba(255,255,255,.08)',
+    color: '#e2e8f0', outline: 'none', boxSizing: 'border-box',
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {/* 团队基本信息 */}
+      <div className="glass-effect" style={{ borderRadius: 12, padding: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+          <Plus style={{ width: 14, height: 14, color: '#06b6d4' }} />
+          <span style={{ fontSize: 13, fontWeight: 500, color: '#e2e8f0' }}>团队信息</span>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <div>
+            <label style={{ fontSize: 10, color: '#64748b', display: 'block', marginBottom: 4 }}>团队名称</label>
+            <input value={teamName} onChange={e => setTeamName(e.target.value)} placeholder="例如：文档生成团队" style={{ ...inputStyle, width: '100%' }} />
+          </div>
+          <div>
+            <label style={{ fontSize: 10, color: '#64748b', display: 'block', marginBottom: 4 }}>最大并发数</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input type="range" min={1} max={10} value={maxConcurrent} onChange={e => setMaxConcurrent(Number(e.target.value))} style={{ flex: 1 }} />
+              <span style={{ fontSize: 12, color: '#94a3b8', minWidth: 20 }}>{maxConcurrent}</span>
+            </div>
+          </div>
+        </div>
+        <div style={{ marginTop: 8 }}>
+          <label style={{ fontSize: 10, color: '#64748b', display: 'block', marginBottom: 4 }}>团队描述</label>
+          <input value={teamDesc} onChange={e => setTeamDesc(e.target.value)} placeholder="团队职责描述..." style={{ ...inputStyle, width: '100%' }} />
+        </div>
+      </div>
+
+      {/* 成员列表 */}
+      <div className="glass-effect" style={{ borderRadius: 12, padding: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Users style={{ width: 14, height: 14, color: '#8b5cf6' }} />
+            <span style={{ fontSize: 13, fontWeight: 500, color: '#e2e8f0' }}>成员（{members.length}）</span>
+          </div>
+          <button onClick={addMember} style={{ padding: '5px 10px', borderRadius: 6, background: 'rgba(6,182,212,.1)', border: '1px solid rgba(6,182,212,.2)', color: '#06b6d4', fontSize: 11, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
+            <UserPlus style={{ width: 12, height: 12 }} /> 添加成员
+          </button>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {members.map((m, idx) => (
+            <div key={idx} style={{ padding: 12, borderRadius: 8, background: 'rgba(0,0,0,.15)', border: '1px solid rgba(255,255,255,.04)' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 8 }}>
+                <div>
+                  <label style={{ fontSize: 9, color: '#475569', display: 'block', marginBottom: 2 }}>角色</label>
+                  <select value={m.role} onChange={e => updateMember(idx, 'role', e.target.value)} style={{ ...inputStyle, width: '100%' }}>
+                    {TEAM_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: 9, color: '#475569', display: 'block', marginBottom: 2 }}>名称</label>
+                  <input value={m.name} onChange={e => updateMember(idx, 'name', e.target.value)} style={{ ...inputStyle, width: '100%' }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 9, color: '#475569', display: 'block', marginBottom: 2 }}>优先级 (1-10)</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <input type="range" min={1} max={10} value={m.priority ?? 5} onChange={e => updateMember(idx, 'priority', Number(e.target.value))} style={{ flex: 1 }} />
+                    <span style={{ fontSize: 11, color: '#94a3b8' }}>{m.priority ?? 5}</span>
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                <div>
+                  <label style={{ fontSize: 9, color: '#475569', display: 'block', marginBottom: 2 }}>目标</label>
+                  <input value={m.goal || ''} onChange={e => updateMember(idx, 'goal', e.target.value)} placeholder="成员目标..." style={{ ...inputStyle, width: '100%' }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 9, color: '#475569', display: 'block', marginBottom: 2 }}>Token 预算</label>
+                  <input type="number" value={m.tokenBudget ?? 8000} onChange={e => updateMember(idx, 'tokenBudget', Number(e.target.value))} style={{ ...inputStyle, width: '100%' }} />
+                </div>
+              </div>
+              <div>
+                <label style={{ fontSize: 9, color: '#475569', display: 'block', marginBottom: 4 }}>允许工具</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                  {AVAILABLE_TOOLS.map(tool => {
+                    const active = (m.allowedTools || []).includes(tool);
+                    return (
+                      <button
+                        key={tool}
+                        onClick={() => toggleTool(idx, tool)}
+                        style={{
+                          padding: '2px 8px', borderRadius: 4, fontSize: 10, fontFamily: 'monospace', cursor: 'pointer',
+                          background: active ? 'rgba(6,182,212,.15)' : 'rgba(255,255,255,.02)',
+                          border: active ? '1px solid rgba(6,182,212,.3)' : '1px solid rgba(255,255,255,.06)',
+                          color: active ? '#06b6d4' : '#475569', transition: 'all .15s',
+                        }}
+                      >
+                        {tool}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              {members.length > 1 && (
+                <button
+                  onClick={() => removeMember(idx)}
+                  style={{ marginTop: 8, padding: '3px 8px', borderRadius: 4, background: 'rgba(239,68,68,.06)', border: '1px solid rgba(239,68,68,.1)', color: '#ef4444', fontSize: 10, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}
+                >
+                  <Trash2 style={{ width: 10, height: 10 }} /> 移除
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 操作按钮 */}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button
+          onClick={handleLaunch}
+          disabled={launching || members.length === 0}
+          style={{
+            flex: 1, padding: '12px 20px', borderRadius: 10, cursor: launching || members.length === 0 ? 'not-allowed' : 'pointer',
+            background: launching || members.length === 0 ? 'rgba(100,116,139,.2)' : 'linear-gradient(135deg, #06b6d4, #8b5cf6)',
+            border: 'none', color: '#fff', fontSize: 14, fontWeight: 600, fontFamily: 'inherit',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, transition: 'all .2s', opacity: launching ? 0.6 : 1,
+          }}
+        >
+          {launching ? <Loader2 style={{ width: 16, height: 16 }} className="spin" /> : <Play style={{ width: 16, height: 16 }} />}
+          {launching ? '启动中...' : '启动团队'}
+        </button>
+        <button
+          onClick={handleSave}
+          disabled={saving || members.length === 0}
+          style={{
+            padding: '12px 20px', borderRadius: 10, cursor: saving || members.length === 0 ? 'not-allowed' : 'pointer',
+            background: saving || members.length === 0 ? 'rgba(100,116,139,.1)' : 'rgba(245,158,11,.1)',
+            border: `1px solid ${saving || members.length === 0 ? 'rgba(100,116,139,.2)' : 'rgba(245,158,11,.25)'}`,
+            color: saving || members.length === 0 ? '#64748b' : '#f59e0b', fontSize: 14, fontWeight: 500, fontFamily: 'inherit',
+            display: 'flex', alignItems: 'center', gap: 8, transition: 'all .2s',
+          }}
+        >
+          {saving ? <Loader2 style={{ width: 16, height: 16 }} className="spin" /> : <Save style={{ width: 16, height: 16 }} />}
+          {saving ? '保存中...' : '保存为模板'}
+        </button>
+      </div>
+
+      {/* 消息提示 */}
+      {message && (
+        <div style={{
+          padding: '10px 14px', borderRadius: 8, fontSize: 12,
+          background: message.type === 'success' ? 'rgba(16,185,129,.08)' : 'rgba(239,68,68,.08)',
+          border: `1px solid ${message.type === 'success' ? 'rgba(16,185,129,.2)' : 'rgba(239,68,68,.2)'}`,
+          color: message.type === 'success' ? '#10b981' : '#ef4444',
+          display: 'flex', alignItems: 'center', gap: 8,
+        }}>
+          {message.type === 'success' ? <CheckCircle2 style={{ width: 14, height: 14, flexShrink: 0 }} /> : <AlertCircle style={{ width: 14, height: 14, flexShrink: 0 }} />}
+          {message.text}
+        </div>
+      )}
+
+      {/* 已保存的自定义模板 */}
+      {savedTemplates.length > 0 && (
+        <div className="glass-effect" style={{ borderRadius: 12, padding: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+            <Save style={{ width: 14, height: 14, color: '#f59e0b' }} />
+            <span style={{ fontSize: 13, fontWeight: 500, color: '#e2e8f0' }}>已保存模板（{savedTemplates.length}）</span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {savedTemplates.map((tpl: TeamTemplate) => (
+              <div key={tpl.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 6, background: 'rgba(255,255,255,.02)', border: '1px solid rgba(255,255,255,.04)' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 500, color: '#e2e8f0' }}>{tpl.name}</div>
+                  <div style={{ fontSize: 10, color: '#475569' }}>{tpl.members?.length || 0} 成员 · {tpl.description || '无描述'}</div>
+                </div>
+                <button onClick={() => handleLoad(tpl)} style={{ padding: '3px 8px', borderRadius: 4, background: 'rgba(6,182,212,.08)', border: '1px solid rgba(6,182,212,.15)', color: '#06b6d4', fontSize: 10, cursor: 'pointer', fontFamily: 'inherit' }}>加载</button>
+                <button onClick={() => handleDelete(tpl.id)} style={{ padding: '3px', borderRadius: 4, background: 'rgba(239,68,68,.06)', border: '1px solid rgba(239,68,68,.1)', color: '#ef4444', cursor: 'pointer', display: 'flex' }}>
+                  <Trash2 style={{ width: 11, height: 11 }} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============ Tab 5: 执行历史 ============
+interface ExecutionHistoryTabProps {
+  listHistory: () => Promise<Array<{ id: string; teamName: string; success: boolean; duration: number; memberCount: number }>>;
+  getExecution: (id: string) => Promise<ExecutionDetail | null>;
+}
+
+function ExecutionHistoryTab({ listHistory, getExecution }: ExecutionHistoryTabProps) {
+  const [history, setHistory] = useState<Array<{ id: string; teamName: string; success: boolean; duration: number; memberCount: number }>>([]);
+  const [loading, setLoading] = useState(true);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [detail, setDetail] = useState<ExecutionDetail | null>(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+
+  const fetchHistory = useCallback(async () => {
+    setLoading(true);
+    try {
+      const h = await listHistory();
+      setHistory(Array.isArray(h) ? h : []);
+    } catch {
+      setHistory([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [listHistory]);
+
+  useEffect(() => {
+    fetchHistory();
+  }, [fetchHistory]);
+
+  const handleExpand = async (id: string) => {
+    if (expandedId === id) {
+      setExpandedId(null);
+      setDetail(null);
+      return;
+    }
+    setExpandedId(id);
+    setDetail(null);
+    setLoadingDetail(true);
+    try {
+      const d = await getExecution(id);
+      setDetail(d);
+    } catch {
+      setDetail(null);
+    } finally {
+      setLoadingDetail(false);
+    }
+  };
+
+  const formatDuration = (ms: number) => {
+    if (ms < 1000) return `${ms}ms`;
+    if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+    return `${Math.floor(ms / 60000)}m ${Math.floor((ms % 60000) / 1000)}s`;
+  };
+
+  if (loading) {
+    return (
+      <div className="glass-effect" style={{ borderRadius: 16, padding: 40, textAlign: 'center' }}>
+        <Loader2 style={{ width: 28, height: 28, color: '#06b6d4', margin: '0 auto 12px', animation: 'spin 1s linear infinite' }} />
+        <p style={{ fontSize: 13, color: '#64748b', margin: 0 }}>加载执行历史...</p>
+      </div>
+    );
+  }
+
+  if (history.length === 0) {
+    return (
+      <div className="glass-effect" style={{ borderRadius: 16, padding: 40, textAlign: 'center' }}>
+        <History style={{ width: 32, height: 32, color: '#475569', margin: '0 auto 12px' }} />
+        <p style={{ fontSize: 14, color: '#94a3b8', margin: '0 0 4px' }}>暂无执行历史</p>
+        <p style={{ fontSize: 11, color: '#475569', margin: 0 }}>启动团队后，执行记录将在此展示</p>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+        <p style={{ fontSize: 12, color: '#64748b', margin: 0 }}>{history.length} 条执行记录</p>
+        <button onClick={fetchHistory} style={{ padding: '4px 8px', borderRadius: 6, background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.08)', color: '#94a3b8', fontSize: 11, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
+          <RefreshCw style={{ width: 11, height: 11 }} /> 刷新
+        </button>
+      </div>
+      {history.map((h) => {
+        const expanded = expandedId === h.id;
+        return (
+          <div key={h.id} className="glass-effect" style={{ borderRadius: 10, overflow: 'hidden', border: `1px solid ${expanded ? 'rgba(6,182,212,.2)' : 'rgba(255,255,255,.06)'}` }}>
+            <div
+              onClick={() => handleExpand(h.id)}
+              style={{ padding: '12px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}
+            >
+              {h.success ? (
+                <CheckCircle2 style={{ width: 16, height: 16, color: '#10b981', flexShrink: 0 }} />
+              ) : (
+                <XCircle style={{ width: 16, height: 16, color: '#ef4444', flexShrink: 0 }} />
+              )}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 500, color: '#e2e8f0' }}>{h.teamName}</div>
+                <div style={{ fontSize: 10, color: '#475569', marginTop: 2 }}>
+                  {h.memberCount} 成员 · {formatDuration(h.duration)}
+                </div>
+              </div>
+              {expanded ? <ChevronDown style={{ width: 14, height: 14, color: '#64748b' }} /> : <ChevronRight style={{ width: 14, height: 14, color: '#64748b' }} />}
+            </div>
+            {expanded && (
+              <div style={{ padding: '0 14px 12px', borderTop: '1px solid rgba(255,255,255,.04)' }}>
+                {loadingDetail ? (
+                  <div style={{ padding: 12, textAlign: 'center' }}>
+                    <Loader2 style={{ width: 16, height: 16, color: '#06b6d4', animation: 'spin 1s linear infinite' }} />
+                  </div>
+                ) : detail ? (
+                  <div style={{ paddingTop: 10 }}>
+                    <div style={{ fontSize: 10, color: '#475569', marginBottom: 6 }}>执行 ID: <span style={{ fontFamily: 'monospace', color: '#94a3b8' }}>{h.id}</span></div>
+                    {detail.members && Array.isArray(detail.members) && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        {detail.members.map((m: ExecutionMember, i: number) => (
+                          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, padding: '4px 6px', borderRadius: 4, background: 'rgba(255,255,255,.02)' }}>
+                            {m.status === 'completed' ? <CheckCircle2 style={{ width: 11, height: 11, color: '#10b981' }} /> : m.status === 'failed' ? <XCircle style={{ width: 11, height: 11, color: '#ef4444' }} /> : <CircleDot style={{ width: 11, height: 11, color: '#64748b' }} />}
+                            <span style={{ color: '#94a3b8' }}>{m.name || m.role}</span>
+                            <span style={{ color: '#475569', fontSize: 9 }}>· {m.role}</span>
+                            {m.tokenUsage && <span style={{ color: '#475569', fontSize: 9, marginLeft: 'auto' }}>{m.tokenUsage.toLocaleString()} tokens</span>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {!!detail.result && (
+                      <div style={{ marginTop: 8, padding: 8, borderRadius: 6, background: 'rgba(0,0,0,.2)', fontSize: 11, color: '#94a3b8', fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 120, overflowY: 'auto' }}>
+                        {typeof detail.result === 'string' ? detail.result.substring(0, 500) : JSON.stringify(detail.result, null, 2).substring(0, 500)}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p style={{ fontSize: 11, color: '#475569', padding: 12 }}>无法加载详情</p>
+                )}
+              </div>
+            )}
           </div>
         );
       })}

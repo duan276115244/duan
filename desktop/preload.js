@@ -313,6 +313,36 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // 启动团队执行
     startTeam: (templateName, taskGoal, extraContext) =>
       ipcRenderer.invoke('subagent:startTeam', { templateName, taskGoal, extraContext }),
+    // 启动自定义团队执行
+    startCustomTeam: (config) => ipcRenderer.invoke('subagent:startCustomTeam', { config }),
+    // 执行历史
+    listHistory: () => ipcRenderer.invoke('subagent:listHistory'),
+    getExecution: (id) => ipcRenderer.invoke('subagent:getExecution', { id }),
+    // 自定义模板 CRUD
+    listCustomTemplates: () => ipcRenderer.invoke('subagent:listCustomTemplates'),
+    saveCustomTemplate: (template) => ipcRenderer.invoke('subagent:saveCustomTemplate', template),
+    deleteCustomTemplate: (id) => ipcRenderer.invoke('subagent:deleteCustomTemplate', { id }),
+  },
+
+  // ===== Phase 3: 工作流构建器 =====
+  workflow: {
+    // SSE 流：main 进程建立到后端的长连接，转发 workflow.* 事件
+    onStream: (callback) => {
+      const handler = (_event, data) => callback(data);
+      ipcRenderer.on('workflow:stream', handler);
+      return () => ipcRenderer.removeListener('workflow:stream', handler);
+    },
+    connectStream: () => ipcRenderer.invoke('workflow:stream:connect'),
+    disconnectStream: () => ipcRenderer.invoke('workflow:stream:disconnect'),
+    // CRUD
+    list: () => ipcRenderer.invoke('workflow:list'),
+    get: (id) => ipcRenderer.invoke('workflow:get', { id }),
+    save: (definition) => ipcRenderer.invoke('workflow:save', definition),
+    delete: (id) => ipcRenderer.invoke('workflow:delete', { id }),
+    // 验证 + 执行 + 历史
+    validate: (payload) => ipcRenderer.invoke('workflow:validate', payload),
+    execute: (payload) => ipcRenderer.invoke('workflow:execute', payload),
+    history: () => ipcRenderer.invoke('workflow:history'),
   },
 
   // ===== D-IPC: MCP 插件市场（走 HTTP，Web/Electron 通用）=====

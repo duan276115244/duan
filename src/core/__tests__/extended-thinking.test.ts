@@ -9,8 +9,13 @@ import { describe, it, expect } from 'vitest';
 import { EnhancedAgentLoop } from '../enhanced-agent-loop.js';
 import {
   runExtendedThinkingStream,
+  normalizeDepth,
+  detectExplicitThinkingLevel,
+  treeOfThoughtSearch,
+  godelSelfVerification,
   type ExtendedThinkingContext,
   type ThinkingPhaseEvent,
+  type ThinkingDepth,
 } from '../extended-thinking-service.js';
 
 describe('P1-2: Extended Thinking — 复杂度检测', () => {
@@ -27,7 +32,7 @@ describe('P1-2: Extended Thinking — 复杂度检测', () => {
         '请设计一个微服务架构，实现用户认证和权限管理系统',
       );
       expect(result.shouldTrigger).toBe(true);
-      expect(['shallow', 'medium', 'deep']).toContain(result.depth);
+      expect(['shallow', 'medium', 'deep', 'L1', 'L2', 'L3', 'L4']).toContain(result.depth);
     });
 
     it('调试/诊断类任务触发', () => {
@@ -97,18 +102,26 @@ describe('P1-2: Extended Thinking — 思考生成', () => {
       expect(result).toContain('安全约束');
     });
 
-    it('medium 深度包含方案生成', async () => {
+    it('medium（→L2）深度不包含方案生成（L3+ 专属）', async () => {
       const result = await (loop as unknown)._runExtendedThinking(
         '优化数据库查询性能',
         'medium',
       );
+      expect(result).not.toContain('方案生成');
+    });
+
+    it('deep（→L3）深度包含方案生成', async () => {
+      const result = await (loop as unknown)._runExtendedThinking(
+        '优化数据库查询性能',
+        'deep',
+      );
       expect(result).toContain('方案生成');
     });
 
-    it('medium 深度包含边缘情况枚举', async () => {
+    it('deep（→L3）深度包含边缘情况枚举', async () => {
       const result = await (loop as unknown)._runExtendedThinking(
         '处理网络请求超时',
-        'medium',
+        'deep',
       );
       expect(result).toContain('边缘情况');
     });
@@ -219,7 +232,7 @@ describe('Phase D1: runExtendedThinkingStream — 流式思考阶段', () => {
   /** 收集流式阶段为列表 */
   async function collectStream(
     problem: string,
-    depth: 'shallow' | 'medium' | 'deep',
+    depth: ThinkingDepth,
   ): Promise<ThinkingPhaseEvent[]> {
     const phases: ThinkingPhaseEvent[] = [];
     for await (const phase of runExtendedThinkingStream(noMemoryCtx, problem, depth)) {
@@ -229,8 +242,15 @@ describe('Phase D1: runExtendedThinkingStream — 流式思考阶段', () => {
   }
 
   describe('阶段 yield 顺序与内容', () => {
-    it('shallow 深度仅 yield 问题分解 + 约束识别（2 个阶段）', async () => {
+    it('shallow（→L1）深度仅 yield 问题分解（1 个阶段）', async () => {
       const phases = await collectStream('实现一个简单功能', 'shallow');
+      expect(phases.length).toBe(1);
+      expect(phases[0].emoji).toBe('🧩');
+      expect(phases[0].title).toBe('问题分解');
+    });
+
+    it('medium（→L2）深度 yield 问题分解 + 约束识别（2 个阶段）', async () => {
+      const phases = await collectStream('优化数据库查询性能', 'medium');
       expect(phases.length).toBe(2);
       expect(phases[0].emoji).toBe('🧩');
       expect(phases[0].title).toBe('问题分解');
@@ -238,26 +258,15 @@ describe('Phase D1: runExtendedThinkingStream — 流式思考阶段', () => {
       expect(phases[1].title).toBe('约束识别');
     });
 
-    it('medium 深度 yield 4 个阶段（含方案生成 + 边缘情况）', async () => {
-      const phases = await collectStream('优化数据库查询性能', 'medium');
-      expect(phases.length).toBe(4);
-      expect(phases.map(p => p.title)).toEqual([
-        '问题分解',
-        '约束识别',
-        expect.stringContaining('方案生成'),
-        '边缘情况枚举',
-      ]);
-    });
-
-    it('deep 深度 yield 5 个阶段（含风险评估）', async () => {
+    it('deep（→L3）深度 yield 5 个阶段（含风险评估，无记忆时无相关经验）', async () => {
       const phases = await collectStream('重构核心架构', 'deep');
       expect(phases.length).toBe(5);
       expect(phases[4].emoji).toBe('⚠️');
       expect(phases[4].title).toBe('风险评估');
     });
 
-    it('每个阶段 body 非空（除约束识别无约束场景）', async () => {
-      const phases = await collectStream('实现功能', 'medium');
+    it('每个阶段 body 非空', async () => {
+      const phases = await collectStream('实现功能', 'deep');
       // 问题分解至少有 1 个子问题（默认"分析核心需求和目标"）
       expect(phases[0].body.length).toBeGreaterThan(0);
       // 方案生成有内容
@@ -266,7 +275,7 @@ describe('Phase D1: runExtendedThinkingStream — 流式思考阶段', () => {
     });
 
     it('约束识别为空时 body 含"未识别到明确约束"', async () => {
-      const phases = await collectStream('简单任务', 'shallow');
+      const phases = await collectStream('简单任务', 'medium');
       const constraintsPhase = phases.find(p => p.title === '约束识别');
       // "简单任务"无任何技术约束关键词 → 走默认 "无明显技术约束"
       expect(constraintsPhase?.body).toMatch(/未识别到明确约束|无明显技术约束/);
@@ -280,13 +289,13 @@ describe('Phase D1: runExtendedThinkingStream — 流式思考阶段', () => {
       expect(riskPhase?.body).toContain('向后兼容');
     });
 
-    it('方案生成阶段标题包含深度信息', async () => {
-      const phases = await collectStream('优化性能', 'medium');
+    it('方案生成阶段标题包含深度信息（L3）', async () => {
+      const phases = await collectStream('优化性能', 'deep');
       const solutionsPhase = phases.find(p => p.title.includes('方案生成'));
-      expect(solutionsPhase?.title).toContain('medium');
+      expect(solutionsPhase?.title).toContain('L3');
     });
 
-    it('deep 深度方案生成 count=5（含备选方案兜底）', async () => {
+    it('deep（→L3）深度方案生成 count=5（含备选方案兜底）', async () => {
       const phases = await collectStream('实现功能', 'deep');
       const solutionsPhase = phases.find(p => p.title.includes('方案生成'));
       // body 形如 "  方案1: ...\n  方案2: ..."，计数行数
@@ -329,7 +338,7 @@ describe('Phase D1: runExtendedThinkingStream — 流式思考阶段', () => {
       expect(memoryPhase).toBeUndefined();
     });
 
-    it('有记忆系统时 yield 相关经验阶段', async () => {
+    it('有记忆系统时 yield 相关经验阶段（L3+）', async () => {
       const mockMemories = [
         { type: 'pattern', content: '用户偏好简洁实现' },
         { type: 'lesson', content: '上次类似任务失败原因是并发问题' },
@@ -339,7 +348,7 @@ describe('Phase D1: runExtendedThinkingStream — 流式思考阶段', () => {
         searchMemoryWithCache: async () => mockMemories,
       };
       const phases: ThinkingPhaseEvent[] = [];
-      for await (const phase of runExtendedThinkingStream(ctxWithMemory, '实现功能', 'medium')) {
+      for await (const phase of runExtendedThinkingStream(ctxWithMemory, '实现功能', 'deep')) {
         phases.push(phase);
       }
       const memoryPhase = phases.find(p => p.title === '相关经验');
@@ -349,7 +358,7 @@ describe('Phase D1: runExtendedThinkingStream — 流式思考阶段', () => {
       expect(memoryPhase?.body).toContain('上次类似任务失败原因是并发问题');
     });
 
-    it('记忆检索抛错时不影响其他阶段（容错）', async () => {
+    it('记忆检索抛错时不影响其他阶段（容错，L3）', async () => {
       const ctxWithError: ExtendedThinkingContext = {
         memoryOrchestrator: {} as unknown,
         searchMemoryWithCache: async () => {
@@ -357,22 +366,22 @@ describe('Phase D1: runExtendedThinkingStream — 流式思考阶段', () => {
         },
       };
       const phases: ThinkingPhaseEvent[] = [];
-      for await (const phase of runExtendedThinkingStream(ctxWithError, '实现功能', 'medium')) {
+      for await (const phase of runExtendedThinkingStream(ctxWithError, '实现功能', 'deep')) {
         phases.push(phase);
       }
-      // 仍应正常产出 4 个阶段（不含相关经验）
-      expect(phases.length).toBe(4);
+      // 仍应正常产出 5 个阶段（不含相关经验）
+      expect(phases.length).toBe(5);
       expect(phases.find(p => p.title === '相关经验')).toBeUndefined();
     });
 
-    it('记忆内容含 null content 时不崩溃（用 ?? 兜底）', async () => {
+    it('记忆内容含 null content 时不崩溃（用 ?? 兜底，L3）', async () => {
       const ctxWithNullContent: ExtendedThinkingContext = {
         memoryOrchestrator: {} as unknown,
         // @ts-expect-error — 测试 malformed data
         searchMemoryWithCache: async () => [{ type: 'pattern', content: null }],
       };
       const phases: ThinkingPhaseEvent[] = [];
-      for await (const phase of runExtendedThinkingStream(ctxWithNullContent, '实现功能', 'medium')) {
+      for await (const phase of runExtendedThinkingStream(ctxWithNullContent, '实现功能', 'deep')) {
         phases.push(phase);
       }
       // 相关经验阶段应正常 yield（不抛 TypeError）
@@ -400,5 +409,272 @@ describe('Phase D1: runExtendedThinkingStream — 流式思考阶段', () => {
         expect(streamJoined).toContain(title);
       });
     });
+  });
+});
+
+// ============================================================
+// v20.0: 4 级思考预算分级测试（L1-L4 + 向后兼容 + 显式触发 + ToT + Gödel）
+// ============================================================
+
+describe('v20.0: normalizeDepth — 深度归一化', () => {
+  it('shallow → L1', () => {
+    expect(normalizeDepth('shallow')).toBe('L1');
+  });
+  it('medium → L2', () => {
+    expect(normalizeDepth('medium')).toBe('L2');
+  });
+  it('deep → L3', () => {
+    expect(normalizeDepth('deep')).toBe('L3');
+  });
+  it('L1 → L1（透传）', () => {
+    expect(normalizeDepth('L1')).toBe('L1');
+  });
+  it('L2 → L2（透传）', () => {
+    expect(normalizeDepth('L2')).toBe('L2');
+  });
+  it('L3 → L3（透传）', () => {
+    expect(normalizeDepth('L3')).toBe('L3');
+  });
+  it('L4 → L4（透传）', () => {
+    expect(normalizeDepth('L4')).toBe('L4');
+  });
+});
+
+describe('v20.0: detectExplicitThinkingLevel — 显式触发词检测', () => {
+  it('检测"极限思考" → L4', () => {
+    const result = detectExplicitThinkingLevel('请极限思考这个架构问题');
+    expect(result).not.toBeNull();
+    expect(result!.level).toBe('L4');
+    expect(result!.label).toBe('极限思考');
+  });
+
+  it('检测"ultrathink" → L4（大小写不敏感）', () => {
+    const result = detectExplicitThinkingLevel('Please ultrathink this problem');
+    expect(result).not.toBeNull();
+    expect(result!.level).toBe('L4');
+  });
+
+  it('检测"深入思考" → L3', () => {
+    const result = detectExplicitThinkingLevel('请深入思考这个设计方案');
+    expect(result).not.toBeNull();
+    expect(result!.level).toBe('L3');
+    expect(result!.label).toBe('深度思考');
+  });
+
+  it('检测"仔细想" → L2', () => {
+    const result = detectExplicitThinkingLevel('帮我仔细想一下这个问题');
+    expect(result).not.toBeNull();
+    expect(result!.level).toBe('L2');
+    expect(result!.label).toBe('标准思考');
+  });
+
+  it('无触发词时返回 null', () => {
+    expect(detectExplicitThinkingLevel('请帮我实现一个功能')).toBeNull();
+  });
+
+  it('L4 优先于 L3（同时出现时取最高级）', () => {
+    // "极限思考" 排在数组首位，先匹配
+    const result = detectExplicitThinkingLevel('深入思考后请极限思考');
+    expect(result).not.toBeNull();
+    expect(result!.level).toBe('L4');
+  });
+});
+
+describe('v20.0: _detectTaskComplexity — 显式触发集成', () => {
+  const loop = new EnhancedAgentLoop({});
+
+  it('用户输入"ultrathink" → shouldTrigger=true, depth=L4', () => {
+    const result = (loop as unknown)._detectTaskComplexity('ultrathink 如何设计分布式系统');
+    expect(result.shouldTrigger).toBe(true);
+    expect(result.depth).toBe('L4');
+    expect(result.reason).toContain('极限思考');
+  });
+
+  it('用户输入"深入思考" → shouldTrigger=true, depth=L3', () => {
+    const result = (loop as unknown)._detectTaskComplexity('深入思考这个性能优化方案');
+    expect(result.shouldTrigger).toBe(true);
+    expect(result.depth).toBe('L3');
+    expect(result.reason).toContain('深度思考');
+  });
+
+  it('用户输入"仔细想" → shouldTrigger=true, depth=L2', () => {
+    const result = (loop as unknown)._detectTaskComplexity('仔细想一下这个 bug 的原因');
+    expect(result.shouldTrigger).toBe(true);
+    expect(result.depth).toBe('L2');
+    expect(result.reason).toContain('标准思考');
+  });
+
+  it('无触发词时走评分机制', () => {
+    const result = (loop as unknown)._detectTaskComplexity('请设计微服务架构');
+    expect(result.shouldTrigger).toBe(true);
+    // 评分机制返回 shallow/medium/deep，不是 L1-L4
+    expect(['shallow', 'medium', 'deep']).toContain(result.depth);
+  });
+});
+
+describe('v20.0: runExtendedThinkingStream — L1-L4 阶段数验证', () => {
+  const noMemoryCtx: ExtendedThinkingContext = {
+    memoryOrchestrator: null,
+    searchMemoryWithCache: async () => [],
+  };
+
+  async function collect(problem: string, depth: ThinkingDepth): Promise<ThinkingPhaseEvent[]> {
+    const phases: ThinkingPhaseEvent[] = [];
+    for await (const phase of runExtendedThinkingStream(noMemoryCtx, problem, depth)) {
+      phases.push(phase);
+    }
+    return phases;
+  }
+
+  it('L1 → 仅 1 个阶段（问题分解）', async () => {
+    const phases = await collect('简单任务', 'L1');
+    expect(phases.length).toBe(1);
+    expect(phases[0].title).toBe('问题分解');
+  });
+
+  it('L2 → 2 个阶段（问题分解 + 约束识别）', async () => {
+    const phases = await collect('中等任务', 'L2');
+    expect(phases.length).toBe(2);
+    expect(phases[1].title).toBe('约束识别');
+  });
+
+  it('L3 → 5 个阶段（无记忆时无相关经验）', async () => {
+    const phases = await collect('复杂任务需要深度分析', 'L3');
+    expect(phases.length).toBe(5);
+    const titles = phases.map(p => p.title);
+    expect(titles).toContain('问题分解');
+    expect(titles).toContain('约束识别');
+    expect(titles.some(t => t.includes('方案生成'))).toBe(true);
+    expect(titles).toContain('边缘情况枚举');
+    expect(titles).toContain('风险评估');
+  });
+
+  it('L4 → 7 个阶段（无记忆时：6 基础 - 1 经验 + 2 L4专属 = 7）', async () => {
+    const phases = await collect('极限思考这个架构设计', 'L4');
+    expect(phases.length).toBe(7);
+    const titles = phases.map(p => p.title);
+    // L4 专属阶段
+    expect(titles).toContain('ToT 树搜索');
+    expect(titles).toContain('自指校验');
+    // ToT 在自指校验之前
+    const totIdx = titles.indexOf('ToT 树搜索');
+    const godelIdx = titles.indexOf('自指校验');
+    expect(totIdx).toBeLessThan(godelIdx);
+  });
+
+  it('L4 方案生成 count=7（比 L3 的 5 更多）', async () => {
+    const phases = await collect('实现功能', 'L4');
+    const solutionsPhase = phases.find(p => p.title.includes('方案生成'));
+    expect(solutionsPhase?.title).toContain('L4');
+    const solutionLines = solutionsPhase!.body.split('\n').filter(l => l.trim().startsWith('方案'));
+    expect(solutionLines.length).toBe(7);
+  });
+
+  it('L4 ToT 树搜索阶段包含 3 个分支', async () => {
+    const phases = await collect('优化性能', 'L4');
+    const totPhase = phases.find(p => p.title === 'ToT 树搜索');
+    expect(totPhase).toBeDefined();
+    expect(totPhase!.emoji).toBe('🌳');
+    expect(totPhase!.body).toContain('保守分支');
+    expect(totPhase!.body).toContain('激进分支');
+    expect(totPhase!.body).toContain('平衡分支');
+    expect(totPhase!.body).toContain('最优路径');
+  });
+
+  it('L4 自指校验阶段包含 4 项检查', async () => {
+    const phases = await collect('实现功能', 'L4');
+    const godelPhase = phases.find(p => p.title === '自指校验');
+    expect(godelPhase).toBeDefined();
+    expect(godelPhase!.emoji).toBe('🪞');
+    expect(godelPhase!.body).toContain('内部矛盾检测');
+    expect(godelPhase!.body).toContain('假设覆盖度');
+    expect(godelPhase!.body).toContain('逻辑完备性');
+    expect(godelPhase!.body).toContain('自指循环检测');
+  });
+});
+
+describe('v20.0: treeOfThoughtSearch — ToT 树搜索', () => {
+  it('返回包含 3 个分支的格式化文本', () => {
+    const result = treeOfThoughtSearch('优化数据库查询性能');
+    expect(result).toContain('保守分支');
+    expect(result).toContain('激进分支');
+    expect(result).toContain('平衡分支');
+  });
+
+  it('包含评分和最优路径选择', () => {
+    const result = treeOfThoughtSearch('实现用户认证功能');
+    expect(result).toContain('评分');
+    expect(result).toContain('最优路径');
+    expect(result).toContain('备选路径');
+  });
+
+  it('安全相关问题 → 保守分支评分更高', () => {
+    const result = treeOfThoughtSearch('设计安全的权限管理系统');
+    // 保守分支因安全问题加分，应是最优路径
+    expect(result).toContain('保守分支');
+    const conservativeScore = parseFloat(
+      result.match(/保守分支\] 评分: ([\d.]+)/)?.[1] ?? '0',
+    );
+    expect(conservativeScore).toBeGreaterThan(0.5);
+  });
+
+  it('性能优化问题 → 激进分支评分更高', () => {
+    const result = treeOfThoughtSearch('优化系统性能和架构重构');
+    const aggressiveScore = parseFloat(
+      result.match(/激进分支\] 评分: ([\d.]+)/)?.[1] ?? '0',
+    );
+    expect(aggressiveScore).toBeGreaterThan(0.5);
+  });
+
+  it('每个分支包含 2 个子节点', () => {
+    const result = treeOfThoughtSearch('测试任务');
+    // 每个分支有 2 个 └─ 子节点
+    const subNodeCount = (result.match(/└─/g) || []).length;
+    expect(subNodeCount).toBe(6); // 3 分支 × 2 子节点
+  });
+});
+
+describe('v20.0: godelSelfVerification — Gödel 自指校验', () => {
+  it('返回包含 4 项检查的校验报告', () => {
+    const result = godelSelfVerification('实现一个安全的用户认证模块');
+    expect(result).toContain('内部矛盾检测');
+    expect(result).toContain('假设覆盖度');
+    expect(result).toContain('逻辑完备性');
+    expect(result).toContain('自指循环检测');
+  });
+
+  it('包含矛盾词对时报告矛盾', () => {
+    const result = godelSelfVerification('增加性能同时减少延迟，上升成功率下降失败率');
+    expect(result).toContain('矛盾');
+    expect(result).toContain('增减矛盾');
+  });
+
+  it('无矛盾时报告"未发现明显矛盾"', () => {
+    const result = godelSelfVerification('实现一个简单的功能');
+    expect(result).toContain('未发现明显矛盾');
+  });
+
+  it('未覆盖所有维度时报告缺失维度', () => {
+    const result = godelSelfVerification('简单的功能实现');
+    // 简单输入不会覆盖所有 5 个维度
+    expect(result).toContain('未覆盖维度');
+  });
+
+  it('自指关键词触发循环论证警告', () => {
+    const result = godelSelfVerification('系统通过自身递归实现自我进化');
+    expect(result).toContain('自指');
+    expect(result).toContain('循环论证');
+  });
+
+  it('包含总结结论行', () => {
+    const result = godelSelfVerification('简单任务');
+    expect(result).toContain('自指校验结论');
+  });
+
+  it('完备输入时总结为"内部一致"', () => {
+    // 覆盖所有维度的输入
+    const comprehensive = '实现安全权限系统，考虑性能延迟，兼容旧版本，控制内存资源，deadline 工期内完成，处理输入请求，生成输出响应，处理错误异常，编写测试验证';
+    const result = godelSelfVerification(comprehensive);
+    expect(result).toContain('内部一致');
   });
 });

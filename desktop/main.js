@@ -5869,6 +5869,120 @@ except Exception as e:
     return { success: true };
   });
 
+  // ===== SubAgent 扩展：自定义团队 + 执行历史 + 自定义模板 CRUD =====
+  // 复用 mcpMarketRequest 的代理模式，桥接后端 /api/subagent/team/*
+  const subagentRequest = async (path, method = 'GET', body = null) => {
+    try {
+      const options = { hostname: 'localhost', port: agentPort, path, method, timeout: 30000 };
+      if (body) {
+        const postData = JSON.stringify(body);
+        options.headers = { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postData) };
+      }
+      return await new Promise((resolve) => {
+        const req = http.request(options, (res) => {
+          let respBody = '';
+          res.on('data', (chunk) => { respBody += chunk.toString(); });
+          res.on('end', () => {
+            try { resolve(JSON.parse(respBody)); } catch { resolve({ success: false, error: '解析响应失败' }); }
+          });
+        });
+        req.on('error', (e) => resolve({ success: false, error: `无法连接 Agent 服务器: ${e.message}` }));
+        req.on('timeout', () => { req.destroy(); resolve({ success: false, error: '请求超时' }); });
+        if (body) req.write(JSON.stringify(body));
+        req.end();
+      });
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  };
+
+  safeHandle('subagent:startCustomTeam', async (_event, { config } = {}) => subagentRequest('/api/subagent/team/custom', 'POST', config));
+  safeHandle('subagent:listHistory', async () => subagentRequest('/api/subagent/team/history'));
+  safeHandle('subagent:getExecution', async (_event, { id } = {}) => subagentRequest(`/api/subagent/team/history?id=${encodeURIComponent(id || '')}`));
+  safeHandle('subagent:listCustomTemplates', async () => subagentRequest('/api/subagent/team/custom-templates'));
+  safeHandle('subagent:saveCustomTemplate', async (_event, template) => subagentRequest('/api/subagent/team/custom-templates', 'POST', template));
+  safeHandle('subagent:deleteCustomTemplate', async (_event, { id } = {}) => subagentRequest(`/api/subagent/team/custom-templates/${encodeURIComponent(id || '')}`, 'DELETE'));
+
+  // ===== Phase 3: 工作流构建器 IPC handlers — 桥接后端 /api/workflow/* =====
+  const workflowRequest = async (path, method = 'GET', body = null) => {
+    try {
+      const options = { hostname: 'localhost', port: agentPort, path, method, timeout: 30000 };
+      if (body) {
+        const postData = JSON.stringify(body);
+        options.headers = { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postData) };
+      }
+      return await new Promise((resolve) => {
+        const req = http.request(options, (res) => {
+          let respBody = '';
+          res.on('data', (chunk) => { respBody += chunk.toString(); });
+          res.on('end', () => {
+            try { resolve(JSON.parse(respBody)); } catch { resolve({ success: false, error: '解析响应失败' }); }
+          });
+        });
+        req.on('error', (e) => resolve({ success: false, error: `无法连接 Agent 服务器: ${e.message}` }));
+        req.on('timeout', () => { req.destroy(); resolve({ success: false, error: '请求超时' }); });
+        if (body) req.write(JSON.stringify(body));
+        req.end();
+      });
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  };
+
+  // SSE 流转发：main 进程建立到后端的工作流 SSE 长连接
+  let workflowSSECleanup = null;
+  ipcMain.handle('workflow:stream:connect', async () => {
+    if (workflowSSECleanup) return { success: true, message: 'SSE 流已连接' };
+    try {
+      const req = http.request({
+        hostname: 'localhost', port: agentPort,
+        path: '/api/workflow/stream', method: 'GET',
+        headers: { Accept: 'text/event-stream' },
+        timeout: 0,
+      }, (res) => {
+        let buffer = '';
+        res.on('data', (chunk) => {
+          buffer += chunk.toString();
+          const parts = buffer.split('\n\n');
+          buffer = parts.pop() || '';
+          for (const part of parts) {
+            const dataLine = part.split('\n').find(l => l.startsWith('data: '));
+            if (dataLine) {
+              const jsonStr = dataLine.slice(6);
+              try {
+                const event = JSON.parse(jsonStr);
+                for (const win of BrowserWindow.getAllWindows()) {
+                  win.webContents.send('workflow:stream', event);
+                }
+              } catch { /* 非 JSON 数据行（如心跳注释），忽略 */ }
+            }
+          }
+        });
+        res.on('end', () => { console.log('[workflow:stream] SSE 连接已关闭'); workflowSSECleanup = null; });
+        res.on('error', () => { workflowSSECleanup = null; });
+      });
+      req.on('error', (e) => { console.error('[workflow:stream] 连接失败:', e.message); workflowSSECleanup = null; });
+      req.end();
+      workflowSSECleanup = () => { req.destroy(); };
+      return { success: true, message: 'SSE 流已连接' };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
+  ipcMain.handle('workflow:stream:disconnect', async () => {
+    if (workflowSSECleanup) { workflowSSECleanup(); workflowSSECleanup = null; }
+    return { success: true };
+  });
+
+  safeHandle('workflow:list', async () => workflowRequest('/api/workflow/list'));
+  safeHandle('workflow:get', async (_event, { id } = {}) => workflowRequest(`/api/workflow/${encodeURIComponent(id || '')}`));
+  safeHandle('workflow:save', async (_event, definition) => workflowRequest('/api/workflow/save', 'POST', definition));
+  safeHandle('workflow:delete', async (_event, { id } = {}) => workflowRequest(`/api/workflow/${encodeURIComponent(id || '')}`, 'DELETE'));
+  safeHandle('workflow:validate', async (_event, payload) => workflowRequest('/api/workflow/validate', 'POST', payload));
+  safeHandle('workflow:execute', async (_event, payload) => workflowRequest('/api/workflow/execute', 'POST', payload));
+  safeHandle('workflow:history', async () => workflowRequest('/api/workflow/history'));
+
   // ===== D-IPC: MCP 插件市场 IPC handlers — 桥接后端 /api/mcp/marketplace/* =====
   const mcpMarketRequest = async (path, method = 'GET', body = null) => {
     try {

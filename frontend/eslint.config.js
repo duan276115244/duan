@@ -23,6 +23,23 @@ export default tseslint.config(
         'warn',
         { allowConstantExport: true },
       ],
+      // 允许 _ 前缀的未使用变量/参数/catch 变量，以及 rest siblings 模式（剥离属性）
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '^_',
+          ignoreRestSiblings: true,
+        },
+      ],
+    },
+  },
+  {
+    // Electron IPC 桥接类型声明：动态载荷用 any 是合理的（preload.js 透传任意结构）
+    files: ['**/types/electron.d.ts'],
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
     },
   },
 )

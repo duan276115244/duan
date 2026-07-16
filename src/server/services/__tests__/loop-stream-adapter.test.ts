@@ -86,30 +86,32 @@ describe('I-1 LoopStreamAdapter', () => {
       expect(events[0].content).toBe('正在思考...');
     });
 
-    it('plan → think（复用 think 通道展示）', async () => {
-      const loop = createMockLoop([{ type: 'plan', content: '执行计划', plan: {} }]);
+    it('plan → plan（保留语义类型与结构化 plan 字段）', async () => {
+      const loop = createMockLoop([{ type: 'plan', content: '执行计划', plan: { steps: ['a', 'b'] } }]);
       const events = await collect(runViaUnifiedLoop(loop, [{ role: 'user', content: 'hi' }]));
-      expect(events[0].type).toBe('think');
+      expect(events[0].type).toBe('plan');
       expect(events[0].content).toBe('执行计划');
+      expect(events[0].plan).toEqual({ steps: ['a', 'b'] });
     });
 
     it('plan 空 content 时使用默认文案', async () => {
       const loop = createMockLoop([{ type: 'plan', content: '', plan: {} }]);
       const events = await collect(runViaUnifiedLoop(loop, [{ role: 'user', content: 'hi' }]));
+      expect(events[0].type).toBe('plan');
       expect(events[0].content).toBe('执行计划已生成');
     });
 
-    it('warning → think', async () => {
+    it('warning → warning（保留语义类型，前端渲染为 amber 横幅）', async () => {
       const loop = createMockLoop([{ type: 'warning', content: '上下文即将压缩' }]);
       const events = await collect(runViaUnifiedLoop(loop, [{ role: 'user', content: 'hi' }]));
-      expect(events[0].type).toBe('think');
+      expect(events[0].type).toBe('warning');
       expect(events[0].content).toBe('上下文即将压缩');
     });
 
-    it('compact → think', async () => {
+    it('compact → compact（保留语义类型，前端渲染为 📦 压缩卡片）', async () => {
       const loop = createMockLoop([{ type: 'compact', content: '已压缩 3 条消息' }]);
       const events = await collect(runViaUnifiedLoop(loop, [{ role: 'user', content: 'hi' }]));
-      expect(events[0].type).toBe('think');
+      expect(events[0].type).toBe('compact');
       expect(events[0].content).toBe('已压缩 3 条消息');
     });
 
@@ -226,7 +228,7 @@ describe('I-1 LoopStreamAdapter', () => {
 
       const events = await collect(runViaUnifiedLoop(loop, [{ role: 'user', content: 'hi' }]));
       expect(events.map(e => e.type)).toEqual([
-        'think', 'think', 'tool_call', 'tool_result', 'chunk', 'chunk',
+        'think', 'plan', 'tool_call', 'tool_result', 'chunk', 'chunk',
       ]);
       expect(events.map(e => e.content)).toEqual([
         '思考1', '计划', '调用 X', 'X 结果', '回答1', '回答2',

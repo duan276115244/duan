@@ -256,7 +256,7 @@ export class PerformanceMonitor {
       };
       queueMicrotask(() => {
         try {
-          EventBus.getInstance().emit('perf.anomaly_detected', anomalyPayload, { source: 'PerformanceMonitor' });
+          void EventBus.getInstance().emit('perf.anomaly_detected', anomalyPayload, { source: 'PerformanceMonitor' });
         } catch {
           // 事件派发失败不应影响指标记录主路径
         }

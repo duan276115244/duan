@@ -1,5 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+﻿import { useState, useEffect, useCallback } from 'react';
 import { Activity, TrendingUp, AlertTriangle, Circle, ArrowLeft, Cpu, User, BarChart3, Zap, CheckCircle, RefreshCw, Target, BrainCircuit, Pause, Play, ChevronDown, ChevronUp, Monitor, MessageSquare, Clock, Database } from 'lucide-react';
+import { Sparkline } from '../components/Sparkline';
+import { Donut } from '../components/Donut';
 
 interface PerfMetrics {
   intentAccuracy: number; taskCompletionRate: number; userSatisfaction: number;
@@ -45,6 +47,47 @@ interface RecStats {
   }>;
 }
 
+interface DashboardSystemStats {
+  totalConversations: number;
+  totalMessages: number;
+  totalToolCalls: number;
+  toolCallSuccess: number;
+  toolCallFail: number;
+  totalSkills: number;
+  totalLearningRecords: number;
+  memoryUsage: number;
+  configuredProviders: number;
+  recentToolUsage: Record<string, number>;
+  dailyActivity: Array<{ date: string; count: number }>;
+}
+
+interface DashboardCapabilityDimension {
+  dimension: string;
+  name?: string;
+  score?: number;
+}
+
+interface DashboardCapability {
+  success?: boolean;
+  overallScore?: number;
+  dimensions?: DashboardCapabilityDimension[];
+  skipped?: unknown[];
+}
+
+interface DashboardData {
+  systemStats?: DashboardSystemStats;
+  capability?: DashboardCapability;
+  [key: string]: unknown;
+}
+
+interface UserProfile {
+  totalInteractions?: number;
+  successRate?: number;
+  interests?: string[];
+  preferredLanguages?: string[];
+  predictions?: { nextIntents?: string[] };
+}
+
 const DIM_COLORS: Record<string, string> = {
   accuracy: '#10b981', efficiency: '#06b6d4', coverage: '#8b5cf6',
   retention: '#f59e0b', adaptation: '#ec4899',
@@ -52,6 +95,14 @@ const DIM_COLORS: Record<string, string> = {
 const DIM_LABELS: Record<string, string> = {
   accuracy: '准确率', efficiency: '效率', coverage: '覆盖率',
   retention: '保留率', adaptation: '适应度',
+};
+
+// metric 卡片 key → snapshots.dimensions 字段映射（用于 sparkline 历史趋势）
+type EvalDimKey = 'accuracy' | 'efficiency' | 'coverage' | 'retention' | 'adaptation';
+const METRIC_SPARK_DIM: Record<string, EvalDimKey> = {
+  toolCallSuccessRate: 'efficiency',
+  contextCoherence: 'retention',
+  selfCorrectionRate: 'adaptation',
 };
 
 function EvalTrendChart({ snapshots }: { snapshots: EvalSnapshot[] }) {
@@ -82,27 +133,11 @@ function EvalTrendChart({ snapshots }: { snapshots: EvalSnapshot[] }) {
   );
 }
 
-function Gauge({ value, max, color }: { value: number; max: number; color: string }) {
-  const r = 28; const circ = 2 * Math.PI * r;
-  const pct = Math.min(value / max, 1);
-  return (
-    <svg width={70} height={70} viewBox="0 0 70 70">
-      <circle cx={35} cy={35} r={r} fill="none" stroke="rgba(148,163,184,.08)" strokeWidth={5} />
-      <circle cx={35} cy={35} r={r} fill="none" stroke={color} strokeWidth={5}
-        strokeDasharray={`${circ * pct} ${circ * (1 - pct)}`} strokeLinecap="round"
-        transform="rotate(-90 35 35)" style={{ transition: 'stroke-dasharray .6s' }} />
-      <text x={35} y={35} textAnchor="middle" dominantBaseline="central" fontSize={13} fontWeight={700} fill="#e2e8f0">
-        {(pct * 100).toFixed(0)}%
-      </text>
-    </svg>
-  );
-}
-
 export function DashboardPage({ onBack }: { onBack?: () => void }) {
   const [metrics, setMetrics] = useState<PerfMetrics | null>(null);
   const [report, setReport] = useState<EvalReport | null>(null);
   const [snapshots, setSnapshots] = useState<EvalSnapshot[]>([]);
-  const [profile, setProfile] = useState<any>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [sla, setSla] = useState<SLAStatus | null>(null);
   const [predAcc, setPredAcc] = useState<PredAccuracy | null>(null);
   const [recStats, setRecStats] = useState<RecStats | null>(null);
@@ -112,16 +147,16 @@ export function DashboardPage({ onBack }: { onBack?: () => void }) {
   const [timeRange, setTimeRange] = useState<'1h' | '24h' | '7d'>('24h');
   const [expandedCard, setExpandedCard] = useState<string | null>(null);
   const [systemInfo, setSystemInfo] = useState<{ uptime: number; version: string; model: string; status: string } | null>(null);
-  const [dashboardData, setDashboardData] = useState<any>(null);
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
 
   const handleBack = useCallback(() => {
     if (onBack) onBack();
   }, [onBack]);
 
   const fetchAll = useCallback(async () => {
-    const isE = typeof window !== 'undefined' && !!(window as any).electronAPI;
+    const isE = typeof window !== 'undefined' && !!window.electronAPI;
     if (isE) {
-      const api = (window as any).electronAPI;
+      const api = window.electronAPI;
       let remoteOk = false;
       // 优先从 Web 服务器 API 获取真实数据（飞书等远程通道的对话也在这里）
       try {
@@ -148,7 +183,7 @@ export function DashboardPage({ onBack }: { onBack?: () => void }) {
         try {
           if (api?.dashboard?.data) {
             const result = await api.dashboard.data();
-            if (result?.success || result?.systemStats || result?.metrics) {
+            if (result?.success || (result as DashboardData).systemStats || result?.metrics) {
               setMetrics(result.metrics || null);
               setReport(result.report || null);
               setSnapshots(Array.isArray(result.snapshots) ? result.snapshots : []);
@@ -166,7 +201,7 @@ export function DashboardPage({ onBack }: { onBack?: () => void }) {
         if (api?.capability?.report) {
           const cap = await api.capability.report();
           if (cap && cap.success !== false) {
-            setDashboardData((prev: any) => prev ? { ...prev, capability: cap } : { capability: cap });
+            setDashboardData((prev) => prev ? { ...prev, capability: cap } : { capability: cap });
           }
         }
       } catch { /* 能力评估未就绪时忽略 */ }
@@ -232,7 +267,7 @@ export function DashboardPage({ onBack }: { onBack?: () => void }) {
   }
 
   // 检查数据是否真实可用（排除 { available: false } 占位对象）
-  const isRealData = (v: any): v is Record<string, any> => v != null && typeof v === 'object' && v.available !== false;
+  const isRealData = <T,>(v: T | null | undefined): v is T => v != null && typeof v === 'object' && (v as unknown as Record<string, unknown>).available !== false;
 
   return (
     <div style={{ height: '100%', width: '100%', overflow: 'hidden', backgroundColor: '#0a0e1a', position: 'relative', display: 'flex', flexDirection: 'column' }}>
@@ -426,7 +461,7 @@ export function DashboardPage({ onBack }: { onBack?: () => void }) {
               </div>
               {Array.isArray(dashboardData.capability.dimensions) && dashboardData.capability.dimensions.length > 0 && (
                 <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(dashboardData.capability.dimensions.length, 5)}, 1fr)`, gap: 8 }}>
-                  {dashboardData.capability.dimensions.slice(0, 5).map((d: any) => (
+                  {dashboardData.capability.dimensions.slice(0, 5).map((d) => (
                     <div key={d.dimension} style={{ padding: '6px 8px', borderRadius: 8, background: 'rgba(255,255,255,.02)', border: '1px solid rgba(255,255,255,.04)' }}>
                       <p style={{ fontSize: 10, color: '#475569', margin: 0 }}>{d.name || d.dimension}</p>
                       <p style={{ fontSize: 13, fontWeight: 600, color: '#e2e8f0', margin: 0 }}>{typeof d.score === 'number' ? d.score.toFixed(1) : '—'}</p>
@@ -452,7 +487,7 @@ export function DashboardPage({ onBack }: { onBack?: () => void }) {
                   .sort(([, a], [, b]) => (b as number) - (a as number))
                   .slice(0, 8)
                   .map(([name, count]) => {
-                    const maxCount = Math.max(...Object.values(dashboardData.systemStats.recentToolUsage) as number[]);
+                    const maxCount = Math.max(...Object.values(dashboardData.systemStats!.recentToolUsage) as number[]);
                     const pct = maxCount > 0 ? ((count as number) / maxCount) * 100 : 0;
                     return (
                       <div key={name} style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 140 }}>
@@ -469,7 +504,7 @@ export function DashboardPage({ onBack }: { onBack?: () => void }) {
           )}
 
           {/* 每日活动 */}
-          {dashboardData?.systemStats?.dailyActivity && dashboardData.systemStats.dailyActivity.length > 0 && (
+          {dashboardData?.systemStats?.dailyActivity && dashboardData.systemStats!.dailyActivity.length > 0 && (
             <div className="glass-effect" style={{ borderRadius: 12, padding: 16, marginBottom: 16 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
                 <Activity style={{ width: 16, height: 16, color: '#10b981' }} />
@@ -477,7 +512,7 @@ export function DashboardPage({ onBack }: { onBack?: () => void }) {
               </div>
               <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 80 }}>
                 {dashboardData.systemStats.dailyActivity.map(({ date, count }: { date: string; count: number }) => {
-                  const maxCount = Math.max(...dashboardData.systemStats.dailyActivity.map((d: any) => d.count));
+                  const maxCount = Math.max(...dashboardData.systemStats!.dailyActivity.map((d) => d.count));
                   const pct = maxCount > 0 ? (count / maxCount) * 100 : 0;
                   return (
                     <div key={date} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
@@ -518,7 +553,7 @@ export function DashboardPage({ onBack }: { onBack?: () => void }) {
                         <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 6, background: 'rgba(245,158,11,.1)', color: '#f59e0b', border: '1px solid rgba(245,158,11,.15)' }}>目标 {targetPct}</span>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <Gauge value={d.current ?? 0} max={key === 'avgResponseTime' ? (d.baseline ?? 0) * 2 : 1} color={d.met ? '#10b981' : '#f59e0b'} />
+                        <Donut value={d.current ?? 0} max={key === 'avgResponseTime' ? (d.baseline ?? 0) * 2 : 1} color={d.met ? '#10b981' : '#f59e0b'} size={70} label={label} sublabel={`${fmt(d.current ?? 0)}${unit}`} />
                         <div style={{ flex: 1 }}>
                           <div style={{ fontSize: 11, marginBottom: 3 }}>
                             <span style={{ color: '#64748b' }}>基线 </span>
@@ -550,6 +585,12 @@ export function DashboardPage({ onBack }: { onBack?: () => void }) {
               const pct = Math.min(100, Math.max(0, (card.value / card.target) * 100));
               const met = card.value >= card.target;
               const isExpanded = expandedCard === card.key;
+              // 从 snapshots 提取该指标对应维度的历史值用于 sparkline
+              const dimKey = METRIC_SPARK_DIM[card.key];
+              const sparkValues = dimKey
+                ? snapshots.map(s => s.dimensions[dimKey]).filter((v): v is number => typeof v === 'number' && isFinite(v))
+                : [];
+              const hasSpark = sparkValues.length >= 2;
               return (
                 <div key={card.label} className="glass-effect" style={{ padding: 16, borderRadius: 12, cursor: 'pointer', transition: 'all .15s' }}
                   onClick={() => setExpandedCard(isExpanded ? null : card.key)}
@@ -561,8 +602,11 @@ export function DashboardPage({ onBack }: { onBack?: () => void }) {
                       {isExpanded ? <ChevronUp style={{ width: 12, height: 12, color: '#475569' }} /> : <ChevronDown style={{ width: 12, height: 12, color: '#475569' }} />}
                     </div>
                   </div>
-                  <div style={{ fontSize: 22, fontWeight: 700, color: met ? '#10b981' : '#f59e0b', marginBottom: 6 }}>
-                    {card.format(card.value)}<span style={{ fontSize: 11, fontWeight: 400, color: '#475569', marginLeft: 2 }}>{card.unit}</span>
+                  <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: met ? '#10b981' : '#f59e0b' }}>
+                      {card.format(card.value)}<span style={{ fontSize: 11, fontWeight: 400, color: '#475569', marginLeft: 2 }}>{card.unit}</span>
+                    </div>
+                    {hasSpark && <Sparkline values={sparkValues} color="#06b6d4" width={60} height={16} />}
                   </div>
                   <div style={{ height: 4, borderRadius: 2, background: 'rgba(148,163,184,.1)' }}>
                     <div style={{ width: `${Math.min(100, pct)}%`, height: '100%', borderRadius: 2, background: met ? '#10b981' : '#f59e0b', transition: 'width .5s', boxShadow: `0 0 6px ${met ? 'rgba(16,185,129,.4)' : 'rgba(245,158,11,.4)'}` }} />

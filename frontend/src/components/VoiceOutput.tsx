@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
+﻿import { useState, useCallback, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { Volume2, VolumeX, Loader2 } from 'lucide-react';
 
 interface VoiceOutputProps {
@@ -33,9 +33,9 @@ async function loadVoiceConfig(): Promise<VoiceConfig> {
   if (cachedVoiceConfig) return cachedVoiceConfig;
   if (voiceConfigLoading) return voiceConfigLoading;
   voiceConfigLoading = (async () => {
-    const isE = typeof window !== 'undefined' && !!(window as any).electronAPI;
+    const isE = typeof window !== 'undefined' && !!window.electronAPI;
     if (isE) {
-      const api = (window as any).electronAPI;
+      const api = window.electronAPI;
       if (api?.voice?.load) {
         try {
           const cfg = await api.voice.load();
@@ -106,12 +106,12 @@ export const VoiceOutput = forwardRef<VoiceOutputHandle, VoiceOutputProps>(funct
     // 方案 A：后端 TTS（更自然的语音，支持音色/语速/音调）
     setIsLoading(true);
     try {
-      const isE = typeof window !== 'undefined' && !!(window as any).electronAPI;
+      const isE = typeof window !== 'undefined' && !!window.electronAPI;
       let res: Response | null = null;
 
       if (isE) {
         // Electron 模式：通过 IPC 转发到 Agent 服务器 TTS
-        const api = (window as any).electronAPI;
+        const api = window.electronAPI;
         if (api?.voice?.testVoice) {
           const result = await api.voice.testVoice({ voice: useVoice, rate: useRate, pitch: usePitch, text: content });
           if (speakCancelledRef.current) return; // P1 修复：IPC 返回后检查取消

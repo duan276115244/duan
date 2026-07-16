@@ -42,7 +42,7 @@ export function VoiceSettingsPage({ onBack }: { onBack?: () => void }) {
 
   // 加载语音配置和音色列表
   useEffect(() => {
-    const api = (window as any).electronAPI;
+    const api = window.electronAPI;
     if (!api?.voice) {
       setLoading(false);
       return;
@@ -77,7 +77,7 @@ export function VoiceSettingsPage({ onBack }: { onBack?: () => void }) {
       isFirstLoad.current = false;
       return; // 首次加载不触发自动保存
     }
-    const api = (window as any).electronAPI;
+    const api = window.electronAPI;
     if (!api?.voice) return;
     // 防抖：500ms 后保存
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
@@ -99,7 +99,7 @@ export function VoiceSettingsPage({ onBack }: { onBack?: () => void }) {
 
   // 保存语音配置
   const handleSave = async () => {
-    const api = (window as any).electronAPI;
+    const api = window.electronAPI;
     if (!api?.voice) {
       showMsg('error', '当前环境不支持语音设置');
       return;
@@ -113,14 +113,14 @@ export function VoiceSettingsPage({ onBack }: { onBack?: () => void }) {
       } else {
         showMsg('error', res?.error || '保存失败');
       }
-    } catch (e: any) {
-      showMsg('error', e.message || '保存失败');
+    } catch (e: unknown) {
+      showMsg('error', e instanceof Error ? e.message : '保存失败');
     }
   };
 
   // 试听指定音色
   const handleTest = async (voiceName?: string) => {
-    const api = (window as any).electronAPI;
+    const api = window.electronAPI;
     if (!api?.voice) {
       showMsg('error', '当前环境不支持语音试听');
       return;
@@ -163,8 +163,8 @@ export function VoiceSettingsPage({ onBack }: { onBack?: () => void }) {
       } else {
         showMsg('error', result?.error || 'TTS 服务不可用，请确保 Agent 服务已启动');
       }
-    } catch (e: any) {
-      showMsg('error', e.message || '试听失败');
+    } catch (e: unknown) {
+      showMsg('error', e instanceof Error ? e.message : '试听失败');
     } finally {
       setVoiceTesting(false);
       setTestingVoice(null);

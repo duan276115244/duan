@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Layers, CheckCircle, BarChart3, RotateCcw, Loader2, Zap, AlertTriangle, Search, Trash2, Sparkles, X, Send } from 'lucide-react';
+import { ArrowLeft, Layers, CheckCircle, BarChart3, RotateCcw, Loader2, Zap, AlertTriangle, Search, Trash2, Sparkles, X, Send, GitBranch } from 'lucide-react';
 
 interface SkillMeta {
   id: string; name: string; version: string; description: string;
@@ -16,6 +16,29 @@ interface SkillQualityReport {
 
 interface SkillVersion {
   version: string; createdAt: number; message: string;
+}
+
+interface SkillDetailResult {
+  success: boolean;
+  quality?: SkillQualityReport;
+  versions?: SkillVersion[];
+  content?: string;
+  error?: string;
+}
+
+interface RollbackResponse {
+  success?: boolean;
+  message?: string;
+  error?: string;
+}
+
+interface MarketSkill {
+  id: string;
+  name: string;
+  version?: string;
+  description?: string;
+  tags?: string[];
+  author?: string;
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -92,6 +115,106 @@ function SkillCard({ skill, onSelect, onDelete }: { skill: SkillMeta; onSelect: 
   );
 }
 
+// ===== 从 SKILL.md 内容正则提取 tools 字段 =====
+// 支持格式：tools: [a, b, c]（内联数组）或 YAML 多行列表（tools: \n  - a \n  - b）
+function extractToolsFromContent(content: string): string[] {
+  if (!content) return [];
+  // 格式 1：tools: [a, b, c]（内联数组）
+  const inlineMatch = content.match(/^tools:\s*\[([^\]]+)\]/m);
+  if (inlineMatch) {
+    return inlineMatch[1]
+      .split(',')
+      .map(t => t.trim().replace(/^["']|["']$/g, ''))
+      .filter(Boolean);
+  }
+  // 格式 2：YAML 多行列表（tools: 后跟若干 `  - item` 行）
+  const multiLineMatch = content.match(/^tools:\s*\n((?:\s+-\s+.+\n?)+)/m);
+  if (multiLineMatch) {
+    return multiLineMatch[1]
+      .split('\n')
+      .map(line => line.match(/^\s+-\s+(.+)/)?.[1].trim().replace(/^["']|["']$/g, ''))
+      .filter((t): t is string => !!t);
+  }
+  return [];
+}
+
+// ===== 技能依赖 SVG mini-graph（纯 SVG 二部图）=====
+function SkillDependencyGraph({ tools, skillName }: { tools: string[]; skillName: string }) {
+  const svgWidth = 300;
+  const rowHeight = 80;
+  const svgHeight = Math.max(rowHeight * tools.length, 60);
+  const skillNodeX = 60;
+  const skillNodeY = svgHeight / 2;
+  const skillNodeW = 80;
+  const skillNodeH = 28;
+  const toolNodeX = 220;
+  const toolNodeR = 5;
+
+  return (
+    <svg width={svgWidth} height={svgHeight} style={{ display: 'block', maxWidth: '100%' }}>
+      <defs>
+        <marker id="dep-arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+          <path d="M0,0 L6,3 L0,6 Z" fill="#475569" />
+        </marker>
+      </defs>
+      {/* 技能节点（左侧 rect + text） */}
+      <rect
+        x={skillNodeX - skillNodeW / 2}
+        y={skillNodeY - skillNodeH / 2}
+        width={skillNodeW}
+        height={skillNodeH}
+        rx="6"
+        fill="rgba(6,182,212,.1)"
+        stroke="#06b6d4"
+        strokeWidth="1"
+      />
+      <text
+        x={skillNodeX}
+        y={skillNodeY + 4}
+        fill="#e2e8f0"
+        fontSize="11"
+        fontWeight="500"
+        textAnchor="middle"
+        fontFamily="inherit"
+      >
+        {skillName.length > 8 ? skillName.substring(0, 7) + '…' : skillName}
+      </text>
+      {/* 工具节点（右侧 circle + text）+ 贝塞尔连线 */}
+      {tools.map((tool, i) => {
+        const y = (i + 0.5) * (svgHeight / tools.length);
+        const startX = skillNodeX + skillNodeW / 2;
+        const startY = skillNodeY;
+        const endX = toolNodeX - toolNodeR;
+        const endY = y;
+        const midX = (startX + endX) / 2;
+        return (
+          <g key={`dep-${i}`}>
+            <path
+              d={`M ${startX} ${startY} C ${midX} ${startY}, ${midX} ${endY}, ${endX} ${endY}`}
+              fill="none"
+              stroke="#475569"
+              strokeWidth="1"
+              strokeDasharray="3 2"
+              markerEnd="url(#dep-arrow)"
+              opacity="0.6"
+            />
+            <circle cx={toolNodeX} cy={y} r={toolNodeR} fill="#8b5cf6" />
+            <text
+              x={toolNodeX + toolNodeR + 6}
+              y={y + 3}
+              fill="#94a3b8"
+              fontSize="10"
+              fontFamily="inherit"
+            >
+              {tool.length > 14 ? tool.substring(0, 13) + '…' : tool}
+            </text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
 function SkillDetail({ skillId, onBack }: { skillId: string; onBack: () => void }) {
   const [meta, setMeta] = useState<SkillMeta | null>(null);
   const [content, setContent] = useState<string>('');
@@ -102,15 +225,15 @@ function SkillDetail({ skillId, onBack }: { skillId: string; onBack: () => void 
 
   useEffect(() => {
     let cancelled = false;
-    const isE = typeof window !== 'undefined' && !!(window as any).electronAPI;
+    const isE = typeof window !== 'undefined' && !!window.electronAPI;
     if (isE) {
       // Electron 模式：通过 IPC 从 main.js 读取真实技能数据
-      const api = (window as any).electronAPI;
+      const api = window.electronAPI;
       if (api?.skill?.list) {
-        api.skill.list().then((result: any) => {
+        api.skill.list().then((result) => {
           if (cancelled) return;
           if (result.success && result.skills && result.skills.length > 0) {
-            const skill = result.skills.find((s: any) => s.id === skillId);
+            const skill = result.skills.find((s) => s.id === skillId);
             if (skill) {
               setMeta(skill);
             }
@@ -125,7 +248,7 @@ function SkillDetail({ skillId, onBack }: { skillId: string; onBack: () => void 
       }
       // 通过 IPC 读取质量评估、版本历史和技能内容
       if (api?.skill?.detail) {
-        api.skill.detail(skillId).then((result: any) => {
+        api.skill.detail(skillId).then((result: SkillDetailResult) => {
           if (cancelled || !result.success) return;
           if (result.quality) setQuality(result.quality);
           if (result.versions && result.versions.length > 0) setVersions(result.versions);
@@ -155,8 +278,8 @@ function SkillDetail({ skillId, onBack }: { skillId: string; onBack: () => void 
 
   const handleRollback = async (version: string) => {
     // P0 修复：支持 Electron 模式（通过 IPC 转发到 Agent 服务器）
-    const isE = typeof window !== 'undefined' && !!(window as any).electronAPI;
-    let data: any;
+    const isE = typeof window !== 'undefined' && !!window.electronAPI;
+    let data: RollbackResponse;
     if (isE) {
       // Electron 模式：通过 HTTP 调用 Agent 服务器（preload 已配置 baseURL）
       try {
@@ -166,8 +289,8 @@ function SkillDetail({ skillId, onBack }: { skillId: string; onBack: () => void 
           body: JSON.stringify({ version }),
         });
         data = await resp.json();
-      } catch (e: any) {
-        setRollbackMsg(`回滚失败: ${e.message}`);
+      } catch (e: unknown) {
+        setRollbackMsg(`回滚失败: ${e instanceof Error ? e.message : String(e)}`);
         setTimeout(() => setRollbackMsg(''), 3000);
         return;
       }
@@ -211,6 +334,16 @@ function SkillDetail({ skillId, onBack }: { skillId: string; onBack: () => void 
     );
   }
 
+  // ===== 计算学习熟练度 =====
+  const proficiency = (meta.successRate ?? 0) * Math.min((meta.usageCount ?? 0) / 10, 1);
+  const proficiencyTier: 'novice' | 'proficient' | 'expert' =
+    proficiency < 0.3 ? 'novice' : proficiency <= 0.7 ? 'proficient' : 'expert';
+  const proficiencyColor = proficiencyTier === 'novice' ? '#64748b' : proficiencyTier === 'proficient' ? '#3b82f6' : '#06b6d4';
+  const proficiencyLabel = proficiencyTier === 'novice' ? '新手' : proficiencyTier === 'proficient' ? '熟练' : '专家';
+
+  // ===== 从 SKILL.md 内容提取工具依赖 =====
+  const tools = extractToolsFromContent(content);
+
   return (
     <div style={{ height: '100%', overflowY: 'auto', padding: 28 }}>
       <button onClick={onBack} style={{ padding: '8px 14px', borderRadius: 10, background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.08)', cursor: 'pointer', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, marginBottom: 18, fontFamily: 'inherit', backdropFilter: 'blur(12px)', transition: 'all .15s' }}
@@ -248,6 +381,17 @@ function SkillDetail({ skillId, onBack }: { skillId: string; onBack: () => void 
         <div className="glass-effect" style={{ padding: 14, borderRadius: 10 }}>
           <p style={{ fontSize: 10, color: '#475569', margin: '0 0 4px' }}>标签</p>
           <p style={{ fontSize: 13, fontWeight: 500, color: '#e2e8f0', margin: 0 }}>{meta.tags.join(', ') || '无'}</p>
+        </div>
+      </div>
+
+      {/* 学习熟练度条 - CSS div 进度条 */}
+      <div className="glass-effect" style={{ padding: 14, borderRadius: 10, marginBottom: 22 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+          <p style={{ fontSize: 10, color: '#475569', margin: 0 }}>学习熟练度</p>
+          <span style={{ fontSize: 11, fontWeight: 500, color: proficiencyColor }}>{proficiencyLabel} · {(proficiency * 100).toFixed(0)}%</span>
+        </div>
+        <div style={{ width: '100%', height: 6, borderRadius: 3, background: 'rgba(255,255,255,.06)' }}>
+          <div style={{ width: `${proficiency * 100}%`, height: '100%', borderRadius: 3, background: proficiencyColor, transition: 'width .5s', boxShadow: `0 0 6px ${proficiencyColor}60` }} />
         </div>
       </div>
 
@@ -320,6 +464,19 @@ function SkillDetail({ skillId, onBack }: { skillId: string; onBack: () => void 
         )}
       </section>
 
+      {/* 技能依赖 - 纯 SVG mini-graph 二部图 */}
+      <section className="glass-effect" style={{ borderRadius: 16, padding: 20, marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+          <GitBranch style={{ width: 16, height: 16, color: '#06b6d4' }} />
+          <h3 style={{ fontSize: 15, fontWeight: 600, color: '#e2e8f0', margin: 0 }}>技能依赖</h3>
+        </div>
+        {tools.length === 0 ? (
+          <p style={{ fontSize: 12, color: '#475569' }}>无依赖信息</p>
+        ) : (
+          <SkillDependencyGraph tools={tools} skillName={meta.name} />
+        )}
+      </section>
+
       {/* 技能内容 - 玻璃态 */}
       {content && (
         <section className="glass-effect" style={{ borderRadius: 16, padding: 20 }}>
@@ -348,17 +505,17 @@ export function SkillManagePage({ onBack }: { onBack?: () => void }) {
   const [pkgResult, setPkgResult] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   // E3: 技能市场 Tab 状态
   const [tab, setTab] = useState<'my' | 'market'>('my');
-  const [marketSkills, setMarketSkills] = useState<any[]>([]);
+  const [marketSkills, setMarketSkills] = useState<MarketSkill[]>([]);
   const [marketLoading, setMarketLoading] = useState(false);
   const [marketAction, setMarketAction] = useState<string | null>(null);
   const [installedSkillIds, setInstalledSkillIds] = useState<Set<string>>(new Set());
 
   const fetchSkills = async () => {
     setLoading(true);
-    const isE = typeof window !== 'undefined' && !!(window as any).electronAPI;
+    const isE = typeof window !== 'undefined' && !!window.electronAPI;
     if (isE) {
       // Electron 模式：优先从 Web 服务器获取真实技能数据
-      const api = (window as any).electronAPI;
+      const api = window.electronAPI;
       // 优先从 Web 服务器 API 获取（真实数据，与 Agent 同步）
       if (api?.skill?.remote) {
         try {
@@ -372,7 +529,7 @@ export function SkillManagePage({ onBack }: { onBack?: () => void }) {
       }
       // 回退到本地 IPC 数据
       if (api?.skill?.refresh) {
-        try { await api.skill.refresh(); } catch {}
+        try { await api.skill.refresh(); } catch { /* ignore */ }
       }
       if (api?.skill?.list) {
         try {
@@ -404,9 +561,9 @@ export function SkillManagePage({ onBack }: { onBack?: () => void }) {
 
   const handleDeleteSkill = async (id: string) => {
     if (!confirm(`确定删除技能 ${id} 吗？此操作不可撤销。`)) return;
-    const isE = typeof window !== 'undefined' && !!(window as any).electronAPI;
+    const isE = typeof window !== 'undefined' && !!window.electronAPI;
     if (isE) {
-      const api = (window as any).electronAPI;
+      const api = window.electronAPI;
       if (api?.skill?.delete) {
         try {
           const result = await api.skill.delete(id);
@@ -416,8 +573,8 @@ export function SkillManagePage({ onBack }: { onBack?: () => void }) {
           } else {
             setDeleteMsg({ type: 'error', text: result?.message || '删除失败' });
           }
-        } catch (err: any) {
-          setDeleteMsg({ type: 'error', text: err.message || '删除失败' });
+        } catch (err: unknown) {
+          setDeleteMsg({ type: 'error', text: (err instanceof Error ? err.message : String(err)) || '删除失败' });
         }
       }
       return;
@@ -431,8 +588,8 @@ export function SkillManagePage({ onBack }: { onBack?: () => void }) {
       } else {
         setDeleteMsg({ type: 'error', text: data.message || '删除失败' });
       }
-    } catch (err: any) {
-      setDeleteMsg({ type: 'error', text: err.message || '删除失败' });
+    } catch (err: unknown) {
+      setDeleteMsg({ type: 'error', text: (err instanceof Error ? err.message : String(err)) || '删除失败' });
     }
   };
 
@@ -441,12 +598,12 @@ export function SkillManagePage({ onBack }: { onBack?: () => void }) {
   // E3: 加载技能市场数据
   const fetchMarketSkills = async () => {
     setMarketLoading(true);
-    const isE = typeof window !== 'undefined' && !!(window as any).electronAPI;
+    const isE = typeof window !== 'undefined' && !!window.electronAPI;
     // 同步已安装技能 ID 集合（用于市场列表显示"已安装"标记）
     setInstalledSkillIds(new Set(skills.map(s => s.id)));
     try {
       if (isE) {
-        const api = (window as any).electronAPI;
+        const api = window.electronAPI;
         if (api?.skill?.marketList) {
           const result = await api.skill.marketList();
           if (result?.success && Array.isArray(result.skills)) {
@@ -480,11 +637,11 @@ export function SkillManagePage({ onBack }: { onBack?: () => void }) {
 
   // E3: 安装/卸载市场技能
   const handleMarketAction = async (action: 'install' | 'uninstall', skillId: string) => {
-    const isE = typeof window !== 'undefined' && !!(window as any).electronAPI;
+    const isE = typeof window !== 'undefined' && !!window.electronAPI;
     setMarketAction(`${action}:${skillId}`);
     try {
       if (isE) {
-        const api = (window as any).electronAPI;
+        const api = window.electronAPI;
         if (!api?.skill) return;
         const result = action === 'install'
           ? await api.skill.marketInstall(skillId)
@@ -528,9 +685,9 @@ export function SkillManagePage({ onBack }: { onBack?: () => void }) {
     setGenerating(true);
     setGenResult(null);
     try {
-      const isE = typeof window !== 'undefined' && !!(window as any).electronAPI;
+      const isE = typeof window !== 'undefined' && !!window.electronAPI;
       if (isE) {
-        const api = (window as any).electronAPI;
+        const api = window.electronAPI;
         if (api?.skill?.generate) {
           const result = await api.skill.generate(genDesc.trim());
           if (result?.success) {
@@ -562,8 +719,8 @@ export function SkillManagePage({ onBack }: { onBack?: () => void }) {
           setGenResult({ type: 'error', text: data?.error || '生成失败，请稍后重试' });
         }
       }
-    } catch (err: any) {
-      setGenResult({ type: 'error', text: err.message || '生成失败' });
+    } catch (err: unknown) {
+      setGenResult({ type: 'error', text: (err instanceof Error ? err.message : String(err)) || '生成失败' });
     } finally {
       setGenerating(false);
     }
@@ -579,7 +736,7 @@ export function SkillManagePage({ onBack }: { onBack?: () => void }) {
     setPackaging(true);
     setPkgResult(null);
     try {
-      const isE = typeof window !== 'undefined' && !!(window as any).electronAPI;
+      const isE = typeof window !== 'undefined' && !!window.electronAPI;
       // 将表单字符串转为数组（按换行/逗号/分号分隔）
       const splitList = (s: string): string[] =>
         s.split(/[\n,;，；]+/).map(x => x.trim()).filter(Boolean);
@@ -593,7 +750,7 @@ export function SkillManagePage({ onBack }: { onBack?: () => void }) {
         examples: pkgForm.intent.trim() ? [pkgForm.intent.trim()] : [],
       };
       if (isE) {
-        const api = (window as any).electronAPI;
+        const api = window.electronAPI;
         if (api?.skill?.package) {
           const result = await api.skill.package(payload);
           if (result?.success) {
@@ -622,8 +779,8 @@ export function SkillManagePage({ onBack }: { onBack?: () => void }) {
           setPkgResult({ type: 'error', text: data?.error || '打包失败，请稍后重试' });
         }
       }
-    } catch (err: any) {
-      setPkgResult({ type: 'error', text: err.message || '打包失败' });
+    } catch (err: unknown) {
+      setPkgResult({ type: 'error', text: (err instanceof Error ? err.message : String(err)) || '打包失败' });
     } finally {
       setPackaging(false);
     }
@@ -631,12 +788,12 @@ export function SkillManagePage({ onBack }: { onBack?: () => void }) {
 
   // 实时同步：监听技能数据变化，自动刷新
   useEffect(() => {
-    const isE = typeof window !== 'undefined' && !!(window as any).electronAPI;
+    const isE = typeof window !== 'undefined' && !!window.electronAPI;
     if (!isE) return;
-    const api = (window as any).electronAPI;
+    const api = window.electronAPI;
     if (!api?.skill?.onUpdated) return;
     // 订阅主进程的技能更新通知
-    const unsubscribe = api.skill.onUpdated((data: any) => {
+    const unsubscribe = api.skill.onUpdated((data) => {
       if (data?.skills && Array.isArray(data.skills)) {
         setSkills(data.skills);
       } else {
@@ -900,7 +1057,7 @@ export function SkillManagePage({ onBack }: { onBack?: () => void }) {
               </div>
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))', gap: 12 }}>
-                {marketSkills.map((skill: any) => {
+                {marketSkills.map((skill) => {
                   const isInstalled = installedSkillIds.has(skill.id);
                   const actionKey = `${isInstalled ? 'uninstall' : 'install'}:${skill.id}`;
                   return (

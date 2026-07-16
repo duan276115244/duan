@@ -19,6 +19,52 @@ interface UseWakeWordReturn {
   stop: () => void;          // 停止监听
 }
 
+// ===== Web Speech API 最小类型声明（TS 标准库未内置 SpeechRecognition）=====
+interface SpeechRecognitionAlternativeLike {
+  readonly transcript: string;
+  readonly confidence: number;
+}
+interface SpeechRecognitionResultLike {
+  readonly isFinal: boolean;
+  readonly length: number;
+  readonly [index: number]: SpeechRecognitionAlternativeLike;
+}
+interface SpeechRecognitionResultListLike {
+  readonly length: number;
+  readonly [index: number]: SpeechRecognitionResultLike;
+}
+interface SpeechRecognitionEventLike {
+  readonly resultIndex: number;
+  readonly results: SpeechRecognitionResultListLike;
+}
+interface SpeechRecognitionErrorEventLike {
+  readonly error: string;
+  readonly message?: string;
+}
+interface SpeechRecognitionLike {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  maxAlternatives: number;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
+  onend: (() => void) | null;
+  start(): void;
+  stop(): void;
+  abort(): void;
+}
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+
+/** 获取浏览器 SpeechRecognition 构造函数（兼容 webkit 前缀），不支持时返回 undefined */
+function getSpeechRecognitionCtor(): SpeechRecognitionConstructor | undefined {
+  if (typeof window === 'undefined') return undefined;
+  const w = window as unknown as {
+    SpeechRecognition?: SpeechRecognitionConstructor;
+    webkitSpeechRecognition?: SpeechRecognitionConstructor;
+  };
+  return w.SpeechRecognition || w.webkitSpeechRecognition;
+}
+
 /**
  * V19 贾维斯增强：唤醒词检测 Hook
  *
@@ -31,7 +77,7 @@ interface UseWakeWordReturn {
 export function useWakeWord({ enabled, onWake, language = 'zh-CN' }: UseWakeWordOptions): UseWakeWordReturn {
   const [listening, setListening] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const onWakeRef = useRef(onWake);
   const enabledRef = useRef(enabled);
 
@@ -41,7 +87,7 @@ export function useWakeWord({ enabled, onWake, language = 'zh-CN' }: UseWakeWord
 
   const start = useCallback(() => {
     if (!enabledRef.current) return;
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const SR = getSpeechRecognitionCtor();
     if (!SR) {
       setError('浏览器不支持 SpeechRecognition，无法使用唤醒词');
       return;
@@ -55,7 +101,7 @@ export function useWakeWord({ enabled, onWake, language = 'zh-CN' }: UseWakeWord
       recognition.interimResults = true; // 实时结果
       recognition.maxAlternatives = 3;
 
-      recognition.onresult = (event: any) => {
+      recognition.onresult = (event) => {
         // 检查最近的识别结果是否包含唤醒词
         try {
           for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -70,10 +116,10 @@ export function useWakeWord({ enabled, onWake, language = 'zh-CN' }: UseWakeWord
               }
             }
           }
-        } catch {}
+        } catch { /* ignore */ }
       };
 
-      recognition.onerror = (event: any) => {
+      recognition.onerror = (event) => {
         if (event.error === 'no-speech' || event.error === 'aborted') return; // 忽略正常事件
         setError(`唤醒词识别错误: ${event.error}`);
       };
@@ -88,7 +134,7 @@ export function useWakeWord({ enabled, onWake, language = 'zh-CN' }: UseWakeWord
             // 重启失败，可能是因为立即重启冲突，延迟后重试
             setTimeout(() => {
               if (enabledRef.current && recognitionRef.current === recognition) {
-                try { recognition.start(); setListening(true); } catch {}
+                try { recognition.start(); setListening(true); } catch { /* ignore */ }
               }
             }, 300);
           }
@@ -101,8 +147,8 @@ export function useWakeWord({ enabled, onWake, language = 'zh-CN' }: UseWakeWord
       recognitionRef.current = recognition;
       setListening(true);
       setError(null);
-    } catch (e: any) {
-      setError(`启动唤醒词检测失败: ${e?.message || String(e)}`);
+    } catch (e: unknown) {
+      setError(`启动唤醒词检测失败: ${e instanceof Error ? e.message : String(e)}`);
     }
   }, [language]);
 
@@ -112,7 +158,7 @@ export function useWakeWord({ enabled, onWake, language = 'zh-CN' }: UseWakeWord
       try {
         recognition.onend = null; // 防止自动重启
         recognition.stop();
-      } catch {}
+      } catch { /* ignore */ }
       recognitionRef.current = null;
     }
     setListening(false);

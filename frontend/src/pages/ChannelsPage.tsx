@@ -3,7 +3,7 @@ import { ArrowLeft, Plus, Trash2, Save, TestTube2, CheckCircle, XCircle, Loader2
 import { PairingPage } from './PairingPage';
 
 // 通道类型图标映射
-const CHANNEL_ICONS: Record<string, any> = {
+const CHANNEL_ICONS: Record<string, React.ComponentType<{ style?: React.CSSProperties }>> = {
   wecom: Briefcase,
   feishu: MessageSquare,
   dingtalk: Bell,
@@ -136,6 +136,9 @@ interface ChannelConfig {
   requireMention?: boolean;
 }
 
+// 通道表单状态：ChannelConfig 的字段 + UI 专用 allowFromStr 字段 + 动态字段索引
+type ChannelFormState = Partial<ChannelConfig> & { allowFromStr?: string; [key: string]: unknown };
+
 export function ChannelsPage({ onBack }: { onBack?: () => void }) {
   const [channels, setChannels] = useState<ChannelConfig[]>([]);
   const [templates, setTemplates] = useState<Record<string, ChannelTemplate>>({});
@@ -146,14 +149,14 @@ export function ChannelsPage({ onBack }: { onBack?: () => void }) {
   // V17: 标签页切换（通道列表 / 配对管理）
   const [activeTab, setActiveTab] = useState<'channels' | 'pairing'>('channels');
 
-  const isElectron = typeof window !== 'undefined' && !!(window as any).electronAPI;
+  const isElectron = typeof window !== 'undefined' && !!window.electronAPI;
 
   // 加载通道列表
   const loadChannels = useCallback(async () => {
     try {
       setLoading(true);
       if (isElectron) {
-        const api = (window as any).electronAPI;
+        const api = window.electronAPI!; // isElectron 已保证非空
         const result = await api.channel.list();
         if (result?.success) {
           setChannels(result.data || []);
@@ -167,7 +170,7 @@ export function ChannelsPage({ onBack }: { onBack?: () => void }) {
           const list = Array.isArray(data)
             ? data
             : (data.channels
-              ? Object.entries(data.channels).map(([id, c]: [string, any]) => ({ id, ...c }))
+              ? Object.entries(data.channels as Record<string, Omit<ChannelConfig, 'id'>>).map(([id, c]) => ({ id, ...c }))
               : []);
           setChannels(list);
         }
@@ -182,15 +185,15 @@ export function ChannelsPage({ onBack }: { onBack?: () => void }) {
   // 加载模板
   useEffect(() => {
     if (isElectron) {
-      const api = (window as any).electronAPI;
-      api.channel.templates().then((result: any) => {
+      const api = window.electronAPI!; // isElectron 已保证非空
+      api.channel.templates().then((result: { success?: boolean; data?: Record<string, ChannelTemplate> }) => {
         if (result?.success) setTemplates(result.data || {});
       }).catch(() => {});
     } else {
       // Web 模式回退：GET /api/channels/templates
       fetch('/api/channels/templates')
         .then(r => r.json())
-        .then((data: any) => {
+        .then((data: { success?: boolean; data?: Record<string, ChannelTemplate> }) => {
           if (data?.success && data.data) setTemplates(data.data);
           else if (data && !data.success) setTemplates({});
         })
@@ -209,7 +212,7 @@ export function ChannelsPage({ onBack }: { onBack?: () => void }) {
   const handleSave = useCallback(async (channel: ChannelConfig) => {
     try {
       if (isElectron) {
-        const api = (window as any).electronAPI;
+        const api = window.electronAPI!; // isElectron 已保证非空
         const result = await api.channel.save(channel);
         if (result?.success) {
           showMessage('success', `通道 ${channel.id} 保存成功`);
@@ -236,8 +239,8 @@ export function ChannelsPage({ onBack }: { onBack?: () => void }) {
           showMessage('error', data?.error || data?.message || '保存失败');
         }
       }
-    } catch (err: any) {
-      showMessage('error', err.message);
+    } catch (err: unknown) {
+      showMessage('error', err instanceof Error ? err.message : String(err));
     }
   }, [isElectron, loadChannels]);
 
@@ -246,7 +249,7 @@ export function ChannelsPage({ onBack }: { onBack?: () => void }) {
     if (!confirm(`确定删除通道 ${id} 吗？`)) return;
     try {
       if (isElectron) {
-        const api = (window as any).electronAPI;
+        const api = window.electronAPI!; // isElectron 已保证非空
         const result = await api.channel.delete(id);
         if (result?.success) {
           showMessage('success', `通道 ${id} 已删除`);
@@ -264,8 +267,8 @@ export function ChannelsPage({ onBack }: { onBack?: () => void }) {
           showMessage('error', data?.error || data?.message || '删除失败');
         }
       }
-    } catch (err: any) {
-      showMessage('error', err.message);
+    } catch (err: unknown) {
+      showMessage('error', err instanceof Error ? err.message : String(err));
     }
   };
 
@@ -273,7 +276,7 @@ export function ChannelsPage({ onBack }: { onBack?: () => void }) {
   const handleTest = async (channel: ChannelConfig) => {
     try {
       if (isElectron) {
-        const api = (window as any).electronAPI;
+        const api = window.electronAPI!; // isElectron 已保证非空
         const result = await api.channel.test(channel);
         if (result?.success) {
           showMessage('success', result.message);
@@ -293,8 +296,8 @@ export function ChannelsPage({ onBack }: { onBack?: () => void }) {
           showMessage('error', data?.error || data?.message || '测试失败');
         }
       }
-    } catch (err: any) {
-      showMessage('error', err.message);
+    } catch (err: unknown) {
+      showMessage('error', err instanceof Error ? err.message : String(err));
     }
   };
 
@@ -465,9 +468,9 @@ const ChannelModal = React.memo(function ChannelModal({ templates, editingChanne
   onClose: () => void;
 }) {
   const [selectedType, setSelectedType] = useState(editingChannel?.type || '');
-  const [config, setConfig] = useState<Record<string, any>>(editingChannel || {});
+  const [config, setConfig] = useState<ChannelFormState>((editingChannel || {}) as ChannelFormState);
   const [testing, setTesting] = useState(false);
-  const isElectron = typeof window !== 'undefined' && !!(window as any).electronAPI;
+  const isElectron = typeof window !== 'undefined' && !!window.electronAPI;
 
   const template = useMemo(() => templates[selectedType], [templates, selectedType]);
 
@@ -483,7 +486,7 @@ const ChannelModal = React.memo(function ChannelModal({ templates, editingChanne
     return id;
   };
 
-  const handleFieldChange = useCallback((key: string, value: any) => {
+  const handleFieldChange = useCallback((key: string, value: unknown) => {
     setConfig(prev => ({ ...prev, [key]: value }));
   }, []);
 
@@ -497,7 +500,7 @@ const ChannelModal = React.memo(function ChannelModal({ templates, editingChanne
       if (id.length < 1 || id.length > 64) {
         return { ok: false, error: '通道 ID 长度必须在 1-64 之间' };
       }
-      if (!/^[a-zA-Z0-9_\-]+$/.test(id)) {
+      if (!/^[a-zA-Z0-9_-]+$/.test(id)) {
         return { ok: false, error: '通道 ID 只能包含字母、数字、下划线、横线' };
       }
     }
@@ -533,6 +536,7 @@ const ChannelModal = React.memo(function ChannelModal({ templates, editingChanne
         if (/\s/.test(val)) {
           return { ok: false, error: `字段「${key}」不能包含空格` };
         }
+        // eslint-disable-next-line no-control-regex -- 控制字符校验是必须的
         if (/[\x00-\x1f\x7f]/.test(val)) {
           return { ok: false, error: `字段「${key}」不能包含控制字符` };
         }
@@ -577,7 +581,7 @@ const ChannelModal = React.memo(function ChannelModal({ templates, editingChanne
           return { ok: false, error: `字段「${key}」不能包含空格` };
         }
         // 简单主机名/IPv4 校验
-        const hostOk = /^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)*[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?$/.test(val)
+        const hostOk = /^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)*[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$/.test(val)
           || /^(\d{1,3}\.){3}\d{1,3}$/.test(val);
         if (!hostOk) {
           return { ok: false, error: `字段「${key}」主机名格式不合法` };
@@ -657,7 +661,7 @@ const ChannelModal = React.memo(function ChannelModal({ templates, editingChanne
     try {
       const payload = { type: selectedType, ...config };
       if (isElectron) {
-        const api = (window as any).electronAPI;
+        const api = window.electronAPI!; // isElectron 已保证非空
         const result = await api.channel.test(payload);
         if (result?.success) {
           alert('✅ ' + result.message);
@@ -678,8 +682,8 @@ const ChannelModal = React.memo(function ChannelModal({ templates, editingChanne
           alert('❌ ' + (data?.error || data?.message || '测试失败'));
         }
       }
-    } catch (err: any) {
-      alert('❌ ' + (err.message || '测试异常'));
+    } catch (err: unknown) {
+      alert('❌ ' + ((err instanceof Error ? err.message : String(err)) || '测试异常'));
     } finally {
       setTesting(false);
     }
@@ -756,7 +760,7 @@ const ChannelModal = React.memo(function ChannelModal({ templates, editingChanne
                   </label>
                   {field.type === 'select' && field.options ? (
                     <select
-                      value={config[field.key] ?? field.default ?? ''}
+                      value={(config[field.key] as string | number | undefined) ?? field.default ?? ''}
                       onChange={(e) => handleFieldChange(field.key, e.target.value)}
                       style={{ width: '100%', padding: '10px 14px', fontSize: 14, background: 'rgba(255,255,255,.04)', borderRadius: 8, border: '1px solid rgba(255,255,255,.08)', outline: 'none', color: '#e2e8f0', boxSizing: 'border-box' }}
                     >
@@ -768,7 +772,7 @@ const ChannelModal = React.memo(function ChannelModal({ templates, editingChanne
                   ) : (
                     <input
                       type={field.type === 'password' ? 'password' : field.type === 'number' ? 'number' : 'text'}
-                      value={config[field.key] ?? field.default ?? ''}
+                      value={(config[field.key] as string | number | undefined) ?? field.default ?? ''}
                       onChange={(e) => handleFieldChange(field.key, field.type === 'number' ? Number(e.target.value) : e.target.value)}
                       placeholder={field.placeholder || ''}
                       style={{ width: '100%', padding: '10px 14px', fontSize: 14, background: 'rgba(255,255,255,.04)', borderRadius: 8, border: '1px solid rgba(255,255,255,.08)', outline: 'none', color: '#e2e8f0', boxSizing: 'border-box' }}

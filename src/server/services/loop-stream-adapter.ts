@@ -14,10 +14,12 @@ import type { LoopEvent, TerminalReason } from '../../core/agent-loop-types.js';
 import { errMsg } from './app-context.js';
 
 export type StreamEvent = {
-  type: 'chunk' | 'think' | 'tool_call' | 'tool_result';
+  type: 'chunk' | 'think' | 'tool_call' | 'tool_result' | 'warning' | 'compact' | 'plan';
   content: string;
   toolName?: string;
   toolArgs?: Record<string, unknown>;
+  /** plan 事件携带的结构化计划对象（仅 type='plan' 时有值） */
+  plan?: Record<string, unknown>;
 };
 
 /**
@@ -89,14 +91,14 @@ export async function* runViaUnifiedLoop(
 /**
  * LoopEvent → StreamEvent 映射。
  *
- * 设计原则：
+ * 设计原则（对标 Claude Code compaction cards / Devin step status，保留语义类型）：
  * - text       → chunk      （主响应文本，写入 fullResponse）
  * - tool_call  → tool_call  （工具调用提示）
  * - tool_result→ tool_result（工具结果）
  * - think      → think      （思考过程）
- * - plan       → think      （执行计划，复用 think 通道展示）
- * - warning    → think      （警告，复用 think 通道展示）
- * - compact    → think      （上下文压缩通知，复用 think 通道展示）
+ * - plan       → plan       （执行计划，保留结构化 plan 字段，前端可独立渲染计划卡片）
+ * - warning    → warning    （系统告警：模型 404/402/限速/超时/网络错误/上下文过长等，前端渲染为 amber 横幅）
+ * - compact    → compact    （上下文压缩通知，前端渲染为 📦 压缩卡片）
  * - error      → chunk      （错误信息写入主响应，与 streamLLMResponse 错误处理一致）
  * - state/done → 跳过       （内部状态，不输出给用户）
  */
@@ -111,11 +113,11 @@ function mapLoopEventToStreamEvent(ev: LoopEvent): StreamEvent | null {
     case 'think':
       return { type: 'think', content: ev.content };
     case 'plan':
-      return { type: 'think', content: ev.content || '执行计划已生成' };
+      return { type: 'plan', content: ev.content || '执行计划已生成', plan: ev.plan };
     case 'warning':
-      return { type: 'think', content: ev.content };
+      return { type: 'warning', content: ev.content };
     case 'compact':
-      return { type: 'think', content: ev.content };
+      return { type: 'compact', content: ev.content };
     case 'error':
       return { type: 'chunk', content: ev.content };
     case 'state':

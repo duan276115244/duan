@@ -6,9 +6,33 @@
 // ============================================================
 
 import type express from 'express';
+import * as fs from 'fs';
 import { EventBus } from '../../core/event-bus.js';
 import { logger } from '../../core/structured-logger.js';
+import { duanPath } from '../../core/duan-paths.js';
+import { atomicWriteJsonSync } from '../../core/atomic-write.js';
 import type { ServerContext } from '../services/app-context.js';
+
+// 自定义团队模板持久化文件
+const CUSTOM_TEMPLATES_FILE = 'agent-team-templates.json';
+
+/** 读取自定义团队模板（顶层数组），文件不存在或损坏时返回 [] */
+function loadCustomTemplates(): any[] {
+  try {
+    const p = duanPath(CUSTOM_TEMPLATES_FILE);
+    if (!fs.existsSync(p)) return [];
+    const raw = fs.readFileSync(p, 'utf-8');
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+}
+
+/** 原子写入自定义团队模板 */
+function saveCustomTemplates(templates: any[]): void {
+  atomicWriteJsonSync(duanPath(CUSTOM_TEMPLATES_FILE), templates);
+}
 
 export function registerSubAgentRoutes(app: express.Application, ctx?: ServerContext): void {
   const eventBus = EventBus.getInstance();
@@ -103,15 +127,36 @@ export function registerSubAgentRoutes(app: express.Application, ctx?: ServerCon
   });
 
   /**
-   * GET /api/subagent/team-templates — 列出所有团队模板
+   * GET /api/subagent/team-templates — 列出所有团队模板（内置 + 自定义）
+   * 内置模板从 AgentTeamOrchestrator 读取（含 members 详情），自定义模板从 agent-team-templates.json 读取
    */
   app.get('/api/subagent/team-templates', (_req: express.Request, res: express.Response): void => {
     try {
-      const templates = [
-        { id: 'code-dev', name: '代码开发团队', description: '完整的代码开发流程：规划→实现→审查→测试' },
-        { id: 'research', name: '调研分析团队', description: '多角度调研分析：资料收集→分析→总结' },
-      ];
-      res.json({ success: true, templates });
+      const orchestrator = ctx?.agentTeamOrchestrator;
+      const builtinTemplates = orchestrator
+        ? orchestrator.getTemplates().map((id: string) => {
+            const info = orchestrator.getTemplateInfo(id);
+            return {
+              id,
+              name: info?.name || id,
+              description: info?.description || '',
+              members: (info?.members || []).map((m: any) => ({
+                role: m.role,
+                name: m.name,
+                priority: m.priority,
+                tokenBudget: m.tokenBudget,
+                allowedTools: m.allowedTools,
+              })),
+              maxConcurrent: info?.maxConcurrent,
+              useWorktreeIsolation: info?.useWorktreeIsolation,
+              custom: false,
+            };
+          })
+        : [];
+
+      const customTemplates = loadCustomTemplates().map((t: any) => ({ ...t, custom: true }));
+
+      res.json({ success: true, templates: [...builtinTemplates, ...customTemplates] });
     } catch (err: unknown) {
       res.status(500).json({ success: false, error: (err instanceof Error ? err.message : String(err)) });
     }
@@ -163,5 +208,131 @@ export function registerSubAgentRoutes(app: express.Application, ctx?: ServerCon
     });
   });
 
-  log.info('SubAgent 路由已注册', { endpoints: ['/api/subagent/stream', '/api/subagent/agents', '/api/subagent/team-templates', '/api/subagent/team/start'] });
+  /**
+   * POST /api/subagent/team/custom — 启动自定义团队执行（异步，结果通过 SSE 推送）
+   * body: AgentTeamConfig（{name, description, members: TeamMemberConfig[], maxConcurrent?, useWorktreeIsolation?}）
+   */
+  app.post('/api/subagent/team/custom', (req: express.Request, res: express.Response): void => {
+    void (async () => {
+      try {
+        const config = req.body;
+        if (!config || !config.name || !Array.isArray(config.members) || config.members.length === 0) {
+          res.status(400).json({ success: false, error: '参数无效：需要 {name, members:[]}' });
+          return;
+        }
+        const teamOrchestrator = ctx?.agentTeamOrchestrator;
+        if (!teamOrchestrator) {
+          res.status(503).json({ success: false, error: 'AgentTeamOrchestrator 不可用（ServerContext 未注入）' });
+          return;
+        }
+
+        // Fire-and-forget：团队执行可能耗时数分钟，结果通过 SSE 推送
+        teamOrchestrator.executeTeam(config)
+          .then(result => {
+            log.info('自定义团队执行完成', { teamName: config.name, success: result.success, duration: result.duration });
+          })
+          .catch(err => {
+            log.error('自定义团队执行失败', { teamName: config.name, error: String(err) });
+          });
+
+        res.json({
+          success: true,
+          message: `自定义团队 "${config.name}" 已启动，请通过 SSE 流查看实时进度`,
+          teamName: config.name,
+        });
+      } catch (err: unknown) {
+        res.status(500).json({ success: false, error: (err instanceof Error ? err.message : String(err)) });
+      }
+    })();
+  });
+
+  /**
+   * GET /api/subagent/team/history — 列出团队执行历史
+   * 可选 ?id=xxx 获取单次执行详情
+   */
+  app.get('/api/subagent/team/history', (req: express.Request, res: express.Response): void => {
+    try {
+      const teamOrchestrator = ctx?.agentTeamOrchestrator;
+      if (!teamOrchestrator) {
+        res.status(503).json({ success: false, error: 'AgentTeamOrchestrator 不可用' });
+        return;
+      }
+      const id = typeof req.query.id === 'string' ? req.query.id : null;
+      if (id) {
+        const detail = teamOrchestrator.getExecution(id);
+        if (!detail) {
+          res.status(404).json({ success: false, error: `未找到执行记录: ${id}` });
+          return;
+        }
+        res.json({ success: true, execution: detail });
+      } else {
+        const summary = teamOrchestrator.getExecutionsSummary();
+        res.json({ success: true, history: summary });
+      }
+    } catch (err: unknown) {
+      res.status(500).json({ success: false, error: (err instanceof Error ? err.message : String(err)) });
+    }
+  });
+
+  /**
+   * GET /api/subagent/team/custom-templates — 列出自定义团队模板
+   */
+  app.get('/api/subagent/team/custom-templates', (_req: express.Request, res: express.Response): void => {
+    try {
+      res.json({ success: true, templates: loadCustomTemplates() });
+    } catch (err: unknown) {
+      res.status(500).json({ success: false, error: (err instanceof Error ? err.message : String(err)) });
+    }
+  });
+
+  /**
+   * POST /api/subagent/team/custom-templates — 保存/更新自定义团队模板
+   * body: {id?, name, description, members, maxConcurrent?, useWorktreeIsolation?}
+   */
+  app.post('/api/subagent/team/custom-templates', (req: express.Request, res: express.Response): void => {
+    try {
+      const tpl = req.body;
+      if (!tpl || !tpl.name || !Array.isArray(tpl.members) || tpl.members.length === 0) {
+        res.status(400).json({ success: false, error: '参数无效：需要 {name, members:[]}' });
+        return;
+      }
+      const templates = loadCustomTemplates();
+      const now = Date.now();
+      const id = tpl.id || `custom_${now.toString(36)}`;
+      const idx = templates.findIndex((t: any) => t.id === id);
+      const record = {
+        id, name: tpl.name, description: tpl.description || '',
+        members: tpl.members, maxConcurrent: tpl.maxConcurrent, useWorktreeIsolation: tpl.useWorktreeIsolation,
+        createdAt: idx >= 0 ? templates[idx].createdAt : now, updatedAt: now,
+      };
+      if (idx >= 0) templates[idx] = record;
+      else templates.push(record);
+      saveCustomTemplates(templates);
+      res.json({ success: true, template: record, message: `模板 "${tpl.name}" 已保存` });
+    } catch (err: unknown) {
+      res.status(500).json({ success: false, error: (err instanceof Error ? err.message : String(err)) });
+    }
+  });
+
+  /**
+   * DELETE /api/subagent/team/custom-templates/:id — 删除自定义团队模板
+   */
+  app.delete('/api/subagent/team/custom-templates/:id', (req: express.Request, res: express.Response): void => {
+    try {
+      const id = req.params.id;
+      const templates = loadCustomTemplates();
+      const idx = templates.findIndex((t: any) => t.id === id);
+      if (idx < 0) {
+        res.status(404).json({ success: false, error: `未找到模板: ${id}` });
+        return;
+      }
+      templates.splice(idx, 1);
+      saveCustomTemplates(templates);
+      res.json({ success: true, message: `模板 ${id} 已删除` });
+    } catch (err: unknown) {
+      res.status(500).json({ success: false, error: (err instanceof Error ? err.message : String(err)) });
+    }
+  });
+
+  log.info('SubAgent 路由已注册', { endpoints: ['/api/subagent/stream', '/api/subagent/agents', '/api/subagent/team-templates', '/api/subagent/team/start', '/api/subagent/team/custom', '/api/subagent/team/history', '/api/subagent/team/custom-templates'] });
 }

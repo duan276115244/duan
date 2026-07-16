@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+﻿import { useState, useEffect, useCallback, type ComponentType, type CSSProperties } from 'react';
 import {
   ArrowLeft, KeyRound, UserPlus, Trash2, CheckCircle, XCircle, Loader2,
   Copy, Clock, Users, BarChart3, Radio, MessageSquare, Bell, Send,
@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 
 // 通道类型图标映射（与 ChannelsPage 保持一致）
-const CHANNEL_ICONS: Record<string, any> = {
+const CHANNEL_ICONS: Record<string, ComponentType<{ style?: CSSProperties }>> = {
   wecom: Briefcase,
   feishu: MessageSquare,
   dingtalk: Bell,
@@ -70,6 +70,29 @@ interface PairingStatus {
   byChannel: Record<string, number>;
 }
 
+interface PairingUsersResponse {
+  success?: boolean;
+  users?: PairedUser[];
+}
+
+interface PairingCodesResponse {
+  success?: boolean;
+  codes?: PairingCode[];
+}
+
+interface PairingStatusResponse {
+  success?: boolean;
+  totalPairedUsers?: number;
+  pendingCodes?: number;
+  byChannel?: Record<string, number>;
+}
+
+interface PairingGenerateResponse {
+  success?: boolean;
+  code?: string;
+  error?: string;
+}
+
 // 格式化剩余时间（mm:ss）
 function formatRemaining(expiresAt: number, now: number): string {
   const remaining = Math.max(0, expiresAt - now);
@@ -118,10 +141,10 @@ export function PairingPage({ onBack }: { onBack?: () => void }) {
   // 加载所有配对数据
   const loadData = useCallback(async () => {
     try {
-      const isE = typeof window !== 'undefined' && !!(window as any).electronAPI;
-      const api = (window as any).electronAPI;
+      const isE = typeof window !== 'undefined' && !!window.electronAPI;
+      const api = window.electronAPI;
 
-      let usersRes: any, codesRes: any, statusRes: any;
+      let usersRes: PairingUsersResponse | null, codesRes: PairingCodesResponse | null, statusRes: PairingStatusResponse | null;
       if (isE && api?.pairing) {
         // Electron 模式：通过 IPC 转发
         [usersRes, codesRes, statusRes] = await Promise.all([
@@ -165,9 +188,9 @@ export function PairingPage({ onBack }: { onBack?: () => void }) {
   const handleGenerate = async () => {
     setGenerating(true);
     try {
-      const isE = typeof window !== 'undefined' && !!(window as any).electronAPI;
-      const api = (window as any).electronAPI;
-      let data: any;
+      const isE = typeof window !== 'undefined' && !!window.electronAPI;
+      const api = window.electronAPI;
+      let data: PairingGenerateResponse | null = null;
       if (isE && api?.pairing) {
         // Electron 模式：通过 IPC 转发
         data = await api.pairing.generate('');
@@ -185,7 +208,7 @@ export function PairingPage({ onBack }: { onBack?: () => void }) {
       }
       if (data?.success) {
         setGeneratedCode({
-          code: data.code,
+          code: data.code!,
           expiresAt: Date.now() + 5 * 60 * 1000,
         });
         showMessage('success', '配对码已生成');
@@ -204,9 +227,9 @@ export function PairingPage({ onBack }: { onBack?: () => void }) {
   // 解除配对
   const handleUnpair = async (user: PairedUser) => {
     try {
-      const isE = typeof window !== 'undefined' && !!(window as any).electronAPI;
+      const isE = typeof window !== 'undefined' && !!window.electronAPI;
       if (isE) {
-        const api = (window as any).electronAPI;
+        const api = window.electronAPI;
         if (api?.pairing?.unpair) {
           const result = await api.pairing.unpair(user.channelType, user.userId);
           if (result?.success) {

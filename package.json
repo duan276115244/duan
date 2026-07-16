@@ -1,7 +1,7 @@
 {
   "name": "duan-xiansheng",
-  "version": "19.0.0",
-  "description": "Duan Agent v19 - Super AI Assistant (J.A.R.V.I.S.) - Experience learning + local reasoning + optimal path",
+  "version": "20.0.0",
+  "description": "Duan Agent v20 - Super AI Assistant (J.A.R.V.I.S.) - Self-evolving autonomous agent with collaboration, fine-tuning, offline capabilities",
   "type": "module",
   "bin": {
     "duan": "dist/entry.js"
@@ -33,6 +33,10 @@
     "build:frontend": "cd frontend && npm run build",
     "build:all": "npm run build && npm run build:frontend",
     "pack:desktop": "electron-builder --win",
+    "pack:linux": "bash scripts/build-linux.sh",
+    "pack:linux:all": "bash scripts/build-linux.sh --all",
+    "pack:linux:arm64": "bash scripts/build-linux.sh --arch arm64",
+    "check:native": "bash scripts/check-native-env.sh",
     "typecheck": "tsc --noEmit --skipLibCheck",
     "lint": "eslint src/ desktop/ --max-warnings 100",
     "lint:fix": "eslint src/ desktop/ --fix",
@@ -162,8 +166,32 @@
       "icon": "desktop/icon.icns"
     },
     "linux": {
-      "target": "AppImage",
-      "icon": "desktop/icon.png"
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": ["x64", "arm64"]
+        },
+        {
+          "target": "deb",
+          "arch": ["x64", "arm64"]
+        },
+        {
+          "target": "rpm",
+          "arch": ["x64", "arm64"]
+        }
+      ],
+      "icon": "desktop/icon.png",
+      "category": "Utility",
+      "desktop": {
+        "Name": "Duan Agent",
+        "Name[zh_CN]": "段先生智能助手",
+        "Comment": "Super AI Assistant",
+        "Comment[zh_CN]": "超级智能助手",
+        "Categories": "Utility;Office;Development;"
+      },
+      "maintainer": "duanxiansheng",
+      "vendor": "DuanXianSheng",
+      "synopsis": "Super AI Assistant for Any Task"
     },
     "asar": true,
     "asarUnpack": [

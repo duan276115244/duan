@@ -18,6 +18,8 @@
  * - 与 KnowledgeGraph 解耦：通过 addEntity/addRelation sink，不直接持私有状态
  */
 
+import * as fs from 'fs';
+import * as path from 'path';
 import { logger } from './structured-logger.js';
 import { EventBus } from './event-bus.js';
 import { KnowledgeGraph } from './knowledge-graph.js';
@@ -588,10 +590,6 @@ export class CodeKnowledgeGraph {
     maxFiles: number,
   ): void {
     if (files.length >= maxFiles) return;
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const fs = require('fs');
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const path = require('path');
 
     let entries: string[];
     try {
@@ -651,10 +649,6 @@ export class CodeKnowledgeGraph {
 
   /** 从文件原始内容抽取 import sources（绕过 TreeSitterAST 的 cleanContent） */
   private extractImportSourcesFromRaw(filePath: string): string[] {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const fs = require('fs');
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const path = require('path');
     let content: string;
     try {
       content = fs.readFileSync(filePath, 'utf-8');
@@ -709,8 +703,6 @@ export class CodeKnowledgeGraph {
 
   /** 从 AST 节点抽取函数调用关系 */
   private extractCallRelations(filePath: string, nodes: ASTNode[]): number {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const fs = require('fs');
     let content: string;
     try {
       content = fs.readFileSync(filePath, 'utf-8');
@@ -776,8 +768,6 @@ export class CodeKnowledgeGraph {
     if (!impSource) return null;
     // 相对路径
     if (impSource.startsWith('.')) {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const path = require('path');
       const dir = path.dirname(fromFile);
       const candidates = [
         path.resolve(dir, impSource),

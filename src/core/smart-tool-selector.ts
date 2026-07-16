@@ -20,7 +20,7 @@ import type { EmbeddingProvider } from './embedding-provider.js';
 // ============ 类型定义 ============
 
 /** 工具分类 */
-export type ToolCategory = 'read' | 'write' | 'execute' | 'browse' | 'desktop' | 'search' | 'memory' | 'self' | 'plan' | 'meta';
+export type ToolCategory = 'read' | 'write' | 'execute' | 'browse' | 'desktop' | 'search' | 'memory' | 'self' | 'plan' | 'meta' | 'engineering';
 
 /** 任务意图类型 */
 export type TaskIntent = 'code' | 'browse' | 'desktop' | 'search' | 'file' | 'chat' | 'self_modify' | 'mixed';
@@ -163,6 +163,130 @@ const BUILTIN_TOOL_METAS: ToolMeta[] = [
   { name: 'self_memory', category: 'memory', risk: 'safe', keywords: ['记忆', '回忆', 'memory', 'remember', 'recall'] },
   { name: 'memory_search', category: 'memory', risk: 'safe', keywords: ['搜索', '记忆', 'memory', 'search'] },
   { name: 'memory_store', category: 'memory', risk: 'moderate', keywords: ['存储', '记忆', '保存', 'memory', 'store', 'save'] },
+  // v20.0 项目分层记忆工具（对标 CLAUDE.md 多层级记忆）
+  { name: 'project_memory_list', category: 'memory', risk: 'safe', keywords: ['项目记忆', '约定', '规则', '记忆列表', 'project', 'memory', 'conventions', 'CLAUDE.md'] },
+  { name: 'project_memory_write', category: 'memory', risk: 'moderate', keywords: ['记住', '保存约定', '写入记忆', '项目规则', 'remember', 'save', 'convention', 'project', 'memory'] },
+  { name: 'project_memory_append', category: 'memory', risk: 'moderate', keywords: ['追加', '添加规则', '追加约定', 'append', 'memory', 'convention'] },
+  { name: 'project_memory_delete', category: 'memory', risk: 'dangerous', keywords: ['删除记忆', '删除约定', 'delete', 'memory', 'remove'] },
+
+  // v20.0 代码库语义索引工具（对标 Cursor codebase indexing）
+  { name: 'codebase_search', category: 'search', risk: 'safe', keywords: ['代码搜索', '语义搜索', '函数在哪', '查找函数', '查找类', 'codebase', 'search', 'semantic', 'find function', 'find class'] },
+  { name: 'codebase_find_references', category: 'read', risk: 'safe', keywords: ['引用', '查找引用', '谁调用了', '引用关系', 'references', 'refs', 'usage'] },
+  { name: 'codebase_call_graph', category: 'read', risk: 'safe', keywords: ['调用图', '调用关系', '函数调用', 'call graph', 'call relationship', 'callee'] },
+  { name: 'codebase_overview', category: 'read', risk: 'safe', keywords: ['代码概览', '项目结构', '索引概览', 'codebase overview', 'project structure', 'symbol count'] },
+
+  // v20.0 国产系统平台与依赖查询工具（UOS/麒麟/LoongArch 适配）
+  { name: 'native_status', category: 'self', risk: 'safe', keywords: ['平台', '架构', '系统', '国产', 'UOS', '麒麟', 'kylin', 'loongarch', 'ARM', 'chromium', 'ffmpeg', '依赖', 'platform', 'arch', 'native', 'system info'] },
+
+  // v20.0 专用子代理预设工具（8 类预设 + 意图派发）
+  { name: 'subagent_list', category: 'meta', risk: 'safe', keywords: ['子代理', '预设', '角色', 'subagent', 'preset', 'agent list', '可用代理', '代理列表'] },
+  { name: 'subagent_dispatch', category: 'meta', risk: 'moderate', keywords: ['派发', '子代理', '审查', '测试', '架构', '调试', '文档', '安全', '性能', '调研', 'dispatch', 'code-reviewer', 'test-engineer', 'architect', 'debugger', 'doc-writer', 'security-auditor', 'perf-optimizer', 'researcher'] },
+
+  // v20.0 斜杠命令系统工具（对标 Claude Code .claude/commands）
+  { name: 'slash_command_list', category: 'meta', risk: 'safe', keywords: ['斜杠命令', '命令列表', 'slash command', '可用命令', '命令帮助', '/help', 'commands'] },
+  { name: 'slash_command_execute', category: 'meta', risk: 'safe', keywords: ['执行命令', '斜杠', 'slash', '命令模板', '/init', '/review', '/test', '/deploy', '/subagent', '自定义命令', 'command execute', 'run command'] },
+
+  // v20.0 动态上下文发现工具（对标 Cursor dynamic discovery）
+  { name: 'context_discover', category: 'read', risk: 'safe', keywords: ['上下文发现', '相关文件', '动态发现', 'context discover', 'related files', 'discover context', '相关代码', '关联文件', 'import 关系', 'git diff'] },
+
+  // v20.0 多文件协同编辑工具（原子性多文件修改 + 回滚）
+  { name: 'multi_file_edit', category: 'write', risk: 'dangerous', keywords: ['多文件编辑', '批量修改', '原子编辑', 'multi file edit', 'batch edit', '协同编辑', '同时修改', '跨文件修改', 'multi edit', '原子性'] },
+
+  // v20.0 分级许可清单工具（对标 Claude Code permissions）
+  { name: 'permission_list', category: 'meta', risk: 'safe', keywords: ['许可', '权限', '清单', '查看', 'permission', 'list', 'allow', 'deny', 'ask'] },
+  { name: 'permission_grant', category: 'meta', risk: 'moderate', keywords: ['授权', '许可', '允许', '放行', 'grant', 'allow', 'permit', 'approve'] },
+  { name: 'permission_revoke', category: 'meta', risk: 'moderate', keywords: ['撤销', '取消', '许可', 'revoke', 'revoke permission', '取消授权'] },
+
+  // v20.0 角色人格系统工具（对标 MetaGPT）
+  { name: 'persona_list', category: 'meta', risk: 'safe', keywords: ['角色', '人格', '列表', 'persona', 'role', 'character', '产品经理', '架构师', '工程师'] },
+  { name: 'persona_info', category: 'meta', risk: 'safe', keywords: ['角色详情', '人格信息', '角色技能', 'persona info', 'role detail', '角色信息'] },
+  { name: 'persona_create', category: 'meta', risk: 'moderate', keywords: ['创建角色', '自定义角色', '新建人格', 'create persona', 'create role', 'add character'] },
+  { name: 'persona_delete', category: 'meta', risk: 'moderate', keywords: ['删除角色', '移除人格', 'delete persona', 'remove role'] },
+  { name: 'persona_send_message', category: 'meta', risk: 'safe', keywords: ['角色通信', '角色消息', '角色间', 'persona message', 'role communication', '角色协作'] },
+
+  // v20.0 长期目标追踪工具（对标 AutoGPT）
+  { name: 'goal_create', category: 'meta', risk: 'moderate', keywords: ['创建目标', '新目标', '长期目标', 'create goal', 'new goal', '目标管理'] },
+  { name: 'goal_create_from_template', category: 'meta', risk: 'moderate', keywords: ['模板创建目标', '从模板创建', '重构项目', '学习新技术', '产品迭代', 'goal template', 'create from template'] },
+  { name: 'goal_list', category: 'meta', risk: 'safe', keywords: ['目标列表', '查看目标', '所有目标', 'list goals', 'goal list', '目标进度'] },
+  { name: 'goal_info', category: 'meta', risk: 'safe', keywords: ['目标详情', '目标信息', '里程碑', '子任务', 'goal info', 'goal detail', '目标状态'] },
+  { name: 'goal_progress', category: 'meta', risk: 'safe', keywords: ['下一个任务', '推进目标', '目标进度', '待办', 'next task', 'goal progress', '继续目标'] },
+  { name: 'goal_advance', category: 'meta', risk: 'moderate', keywords: ['推进', '完成子任务', '下一个', 'advance goal', 'next subtask', '目标推进'] },
+  { name: 'goal_update_status', category: 'meta', risk: 'moderate', keywords: ['更新目标', '激活目标', '暂停目标', '完成目标', '放弃目标', 'update goal', 'activate', 'pause', 'complete', 'abandon'] },
+  { name: 'goal_add_subtask', category: 'meta', risk: 'moderate', keywords: ['添加子任务', '新子任务', 'add subtask', 'new task', '增加任务'] },
+  { name: 'goal_complete_subtask', category: 'meta', risk: 'moderate', keywords: ['完成子任务', '标记完成', 'complete subtask', 'finish task', '子任务完成'] },
+  { name: 'goal_delete', category: 'meta', risk: 'dangerous', keywords: ['删除目标', '移除目标', 'delete goal', 'remove goal', '清除目标'] },
+  { name: 'goal_template_list', category: 'meta', risk: 'safe', keywords: ['目标模板', '可用模板', 'goal templates', 'template list', '模板列表'] },
+
+  // v20.0 自主工程任务工具（对标 Devin）
+  { name: 'engineering_create', category: 'engineering', risk: 'moderate', keywords: ['工程任务', '自主工程', '实现功能', '开发功能', 'create engineering', 'new task', '需求实现', '端到端'] },
+  { name: 'engineering_list', category: 'engineering', risk: 'safe', keywords: ['工程列表', '任务列表', 'list engineering', 'engineering tasks', '查看工程'] },
+  { name: 'engineering_info', category: 'engineering', risk: 'safe', keywords: ['工程详情', '任务详情', '阶段状态', 'engineering info', 'task detail', '工程信息'] },
+  { name: 'engineering_run', category: 'engineering', risk: 'moderate', keywords: ['执行工程', '启动任务', '运行工程', 'run engineering', 'start task', '执行任务', '自动开发'] },
+  { name: 'engineering_pause', category: 'engineering', risk: 'moderate', keywords: ['暂停工程', '暂停任务', 'pause engineering', 'pause task'] },
+  { name: 'engineering_resume', category: 'engineering', risk: 'moderate', keywords: ['恢复工程', '继续工程', 'resume engineering', 'resume task', '继续开发'] },
+  { name: 'engineering_delete', category: 'engineering', risk: 'dangerous', keywords: ['删除工程', '删除任务', 'delete engineering', 'remove task'] },
+  { name: 'engineering_targets', category: 'engineering', risk: 'safe', keywords: ['部署目标', 'deployment target', '部署选项', '部署方式', 'deploy'] },
+
+  // v20.0 多模态文档解析工具（对标 Unstructured/MinerU：统一文档解析）
+  { name: 'document_parse', category: 'read', risk: 'safe', keywords: ['解析文档', '文档内容', '读取文档', 'PDF', 'Word', 'Excel', 'PPT', 'parse document', 'document content', '提取文本', '文档提取', '解析表格'] },
+  { name: 'document_parse_dir', category: 'read', risk: 'safe', keywords: ['批量解析', '目录文档', '批量文档', 'parse directory', 'batch parse', '解析整个目录', '文件夹文档'] },
+  { name: 'document_types', category: 'read', risk: 'safe', keywords: ['文档类型', '支持类型', '支持的格式', 'document types', 'supported formats', '文档格式', '能解析什么'] },
+
+  // v20.0 §5.4 主动提问工具（对标 ChatGPT 追问 / Khan Academy 个性化引导）
+  { name: 'proactive_question_check', category: 'self', risk: 'safe', keywords: ['主动提问', '检查提问', '知识盲区', '错误模式', '兴趣信号', 'proactive question', 'check question', '引导学习', '主动追问'] },
+  { name: 'proactive_question_feedback', category: 'self', risk: 'safe', keywords: ['提问反馈', '用户反馈', '记录回答', 'feedback', 'record feedback', '用户回答'] },
+  { name: 'proactive_question_stats', category: 'self', risk: 'safe', keywords: ['提问统计', '回答率', '提问数据', 'stats', 'statistics', 'question stats'] },
+  { name: 'proactive_question_policy', category: 'self', risk: 'moderate', keywords: ['提问策略', '频率控制', '冷却期', '每日上限', 'policy', 'cooldown', 'daily limit', '更新策略'] },
+
+  // 技能市场类（v20.0 §5.4）
+  { name: 'skill_market_search', category: 'search', risk: 'safe', keywords: ['技能市场', '搜索技能', '市场搜索', 'skill market', 'search skill', '找技能', '技能商店'] },
+  { name: 'skill_market_list', category: 'read', risk: 'safe', keywords: ['技能列表', '市场列表', '推荐技能', '已安装技能', 'list skills', 'featured', '热门技能'] },
+  { name: 'skill_market_info', category: 'read', risk: 'safe', keywords: ['技能详情', '技能信息', 'skill info', 'skill detail', '查看技能'] },
+  { name: 'skill_market_publish', category: 'write', risk: 'moderate', keywords: ['发布技能', '上架技能', 'publish skill', 'share skill', '分享技能', '提交技能'] },
+  { name: 'skill_market_install', category: 'write', risk: 'moderate', keywords: ['安装技能', '下载技能', 'install skill', 'download skill', '获取技能'] },
+  { name: 'skill_market_rate', category: 'write', risk: 'safe', keywords: ['评分技能', '技能评分', 'rate skill', 'review skill', '评价技能'] },
+  { name: 'skill_market_report', category: 'write', risk: 'safe', keywords: ['举报技能', 'report skill', '投诉技能', '违规技能'] },
+  { name: 'skill_market_stats', category: 'read', risk: 'safe', keywords: ['市场统计', '技能统计', 'market stats', 'skill stats', '市场数据'] },
+
+  // 离线协调器类（v20.0 §5.2）
+  { name: 'offline_status', category: 'self', risk: 'safe', keywords: ['离线状态', '网络状态', 'offline status', 'network state', '离线模式状态', '本地模型数'] },
+  { name: 'offline_probe', category: 'self', risk: 'safe', keywords: ['探测网络', '网络探测', '网络连通性', 'offline probe', 'network probe', '检查网络', '测试网络'] },
+  { name: 'offline_mode_toggle', category: 'self', risk: 'moderate', keywords: ['离线模式', '切换离线', '启用离线', '禁用离线', 'offline mode', 'toggle offline', '断网模式'] },
+  { name: 'offline_models_detect', category: 'search', risk: 'moderate', keywords: ['检测本地模型', '本地模型', 'ollama 检测', 'llama.cpp 检测', 'detect local models', 'local llm', '离线模型'] },
+  { name: 'offline_models_list', category: 'read', risk: 'safe', keywords: ['本地模型列表', '列出本地模型', 'list local models', 'ollama models', '已检测模型'] },
+  { name: 'offline_knowledge_query', category: 'search', risk: 'safe', keywords: ['离线知识', '离线文档', '知识库查询', 'offline knowledge', '离线查询', '断网查询'] },
+  { name: 'offline_knowledge_add', category: 'write', risk: 'moderate', keywords: ['添加离线知识', '添加知识', 'offline knowledge add', '保存离线文档', '自定义知识'] },
+  { name: 'offline_knowledge_list', category: 'read', risk: 'safe', keywords: ['离线知识列表', '知识库列表', 'offline knowledge list', '列出知识'] },
+
+  // 学习进度可视化类（v20.0 §5.4）
+  { name: 'progress_overview', category: 'self', risk: 'safe', keywords: ['进度总览', '学习进度', '进度概览', 'progress overview', '学习总览', '快照数'] },
+  { name: 'progress_learning_curve', category: 'self', risk: 'safe', keywords: ['学习曲线', '进度曲线', 'learning curve', '时间序列', '学习趋势图', '学习记录曲线'] },
+  { name: 'progress_radar_chart', category: 'self', risk: 'safe', keywords: ['能力雷达图', '雷达图', '能力图', 'radar chart', '能力维度', '能力分布'] },
+  { name: 'progress_skill_tree', category: 'self', risk: 'safe', keywords: ['技能树', '技能分类', 'skill tree', '技能层级', '技能结构'] },
+  { name: 'progress_knowledge_gaps', category: 'self', risk: 'safe', keywords: ['知识盲区', '错误模式', 'knowledge gaps', '盲区视图', '知识缺口'] },
+  { name: 'progress_trends', category: 'self', risk: 'safe', keywords: ['趋势分析', '改进趋势', '下降趋势', 'trends', '趋势统计', '指标趋势'] },
+  { name: 'progress_snapshot', category: 'self', risk: 'moderate', keywords: ['进度快照', '生成快照', 'progress snapshot', '保存进度', '记录快照'] },
+  { name: 'progress_report', category: 'self', risk: 'safe', keywords: ['进度报告', '学习报告', 'progress report', '可视化报告', '综合报告'] },
+
+  // 模型微调类（v20.0 §3.5）
+  { name: 'finetune_collect_data', category: 'self', risk: 'moderate', keywords: ['收集训练数据', '训练数据', '微调数据', 'collect training data', 'finetune collect', 'Q&A 样例'] },
+  { name: 'finetune_list_examples', category: 'read', risk: 'safe', keywords: ['训练样例列表', '样例池', 'list examples', 'finetune examples', '训练样本'] },
+  { name: 'finetune_create_dataset', category: 'write', risk: 'moderate', keywords: ['创建数据集', '训练数据集', 'create dataset', 'finetune dataset', 'LoRA 数据', 'QLoRA 数据', 'ChatML'] },
+  { name: 'finetune_list_datasets', category: 'read', risk: 'safe', keywords: ['数据集列表', '列出数据集', 'list datasets', 'finetune datasets'] },
+  { name: 'finetune_create_job', category: 'execute', risk: 'moderate', keywords: ['创建训练任务', '训练任务', '微调任务', 'create training job', 'finetune job', 'ollama train', 'llama.cpp fine-tune'] },
+  { name: 'finetune_start_job', category: 'execute', risk: 'moderate', keywords: ['启动训练', '开始训练', 'start training', 'finetune start', 'run training'] },
+  { name: 'finetune_job_status', category: 'read', risk: 'safe', keywords: ['训练状态', '训练进度', 'job status', 'training progress', 'finetune status'] },
+  { name: 'finetune_list_models', category: 'read', risk: 'safe', keywords: ['微调模型列表', '已训练模型', 'trained models', 'finetune models', '微调后的模型'] },
+
+  // 协作类（v20.0 §5.3）
+  { name: 'collab_team_register', category: 'write', risk: 'moderate', keywords: ['注册团队成员', '添加成员', '团队注册', 'team register', 'add member', '加入团队'] },
+  { name: 'collab_team_list', category: 'read', risk: 'safe', keywords: ['团队成员列表', '成员列表', 'team list', 'members', '在线成员', '团队人员'] },
+  { name: 'collab_session_create', category: 'write', risk: 'moderate', keywords: ['创建共享会话', '协作会话', 'session create', 'collab session', '多人会话', '实时协作'] },
+  { name: 'collab_session_list', category: 'read', risk: 'safe', keywords: ['会话列表', '列出会话', 'session list', 'collab sessions', '共享会话列表'] },
+  { name: 'collab_session_message', category: 'write', risk: 'moderate', keywords: ['发送协作消息', '会话消息', 'session message', 'collab message', '团队聊天', '协作消息'] },
+  { name: 'collab_task_assign', category: 'write', risk: 'moderate', keywords: ['分配团队任务', '任务派发', 'task assign', 'collab task', '团队任务', '协作任务'] },
+  { name: 'collab_task_list', category: 'read', risk: 'safe', keywords: ['团队任务列表', '协作任务列表', 'task list', 'collab tasks', '团队待办', '任务追踪'] },
+  { name: 'collab_knowledge_share', category: 'write', risk: 'moderate', keywords: ['共享知识', '团队知识库', 'knowledge share', 'team knowledge', '协作知识', '知识共享'] },
 
   // self 类
   { name: 'self_read', category: 'self', risk: 'safe', keywords: ['自我', '读取', '状态', 'self', 'read', 'status'] },
@@ -366,7 +490,17 @@ const INTENT_KEYWORDS: Record<TaskIntent, { keywords: string[]; weight: number }
   },
   search: {
     keywords: ['搜索', '查找', '查询', '检索', 'google', 'bing', '百度',
-      'search', 'find', 'query', 'lookup', '网上搜', '搜一下', '找一下'],
+      'search', 'find', 'query', 'lookup', '网上搜', '搜一下', '找一下',
+      // v20.0 §5.4 技能市场关键词
+      '技能市场', 'skill market', '找技能', '技能商店', '热门技能', '推荐技能',
+      // v20.0 §5.2 离线协调器关键词
+      '离线', 'offline', '断网', '无网络', '网络探测', '网络状态', '本地模型', 'ollama', 'llama.cpp', '离线知识', '离线模式',
+      // v20.0 §5.4 学习进度可视化关键词
+      '进度', '学习曲线', '雷达图', '技能树', '趋势分析', 'progress', 'radar', 'skill tree',
+      // v20.0 §3.5 模型微调关键词
+      '微调', 'fine-tune', 'finetune', '训练模型', 'LoRA', 'QLoRA', '训练数据', '训练任务', 'ollama train', 'llama.cpp', '微调模型',
+      // v20.0 §5.3 协作关键词
+      '协作', '团队', '共享会话', '任务派发', '团队知识库', 'collab', 'team', 'collaboration', '多人协作', '实时协作'],
     weight: 1.0,
   },
   file: {
@@ -385,7 +519,11 @@ const INTENT_KEYWORDS: Record<TaskIntent, { keywords: string[]; weight: number }
       // V22 ultimate: 办公能力类关键词——日历/邮件/PDF高级/笔记/看板/工作流
       '日历', 'calendar', '日程事件', '会议邀请', '邮件批处理', '群发单显', '邮件合并',
       'PDF合并', 'PDF加密', 'PDF旋转', '笔记', '知识管理', '双链', '看板', 'kanban',
-      '工作流', '自动化', '定时任务', '触发器', '动作链'],
+      '工作流', '自动化', '定时任务', '触发器', '动作链',
+      // v20.0 §5.1: 多模态文档解析关键词——PDF/Word/Excel/PPT 解析属 file 意图
+      '解析文档', '文档内容', '读取文档', '文档提取', '提取文本', '解析表格',
+      'Word', 'word', 'docx', 'PPT', 'ppt', 'pptx', 'docx', 'xlsx',
+      '批量解析', '目录文档', '批量文档', '文档类型', '支持的格式'],
     weight: 1.0,
   },
   chat: {

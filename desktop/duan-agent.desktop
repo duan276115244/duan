@@ -1,0 +1,16 @@
+[Desktop Entry]
+Type=Application
+Name=段先生 Agent
+Name[zh_CN]=段先生智能助手
+Comment=Super AI Assistant for Any Task
+Comment[zh_CN]=超级智能助手，解决任何问题
+GenericName=AI Agent
+GenericName[zh_CN]=AI 智能体
+Keywords=AI;Agent;Assistant;智能;助手;段先生;
+Categories=Utility;Office;Development;
+Exec=/opt/duan-agent/duan-agent %U
+Icon=duan-agent
+Terminal=false
+StartupNotify=true
+StartupWMClass=Duan Agent
+MimeType=x-scheme-handler/duan;

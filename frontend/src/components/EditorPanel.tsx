@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect, Component, type ReactNode } from 'react';
+import { useState, useRef, useCallback, useEffect, Component, type ReactNode, type ErrorInfo } from 'react';
 import { File, Folder, FolderOpen, ChevronRight, ChevronDown, Save, FilePlus, FolderPlus, RefreshCw, AlertTriangle, RotateCw } from 'lucide-react';
 
 // ===== 类型 =====
@@ -10,7 +10,7 @@ interface FileNode {
 }
 
 // ===== Electron 环境检测 =====
-const isElectron = typeof window !== 'undefined' && !!(window as any).electronAPI;
+const isElectron = typeof window !== 'undefined' && !!window.electronAPI;
 
 // ===== 示例文件树 =====
 const DEMO_FILE_TREE: FileNode[] = [
@@ -252,7 +252,7 @@ export function EditorPanel({ initialFile }: EditorPanelProps) {
   // 直接监听 editor:open-file 事件（更可靠地实时显示 agent 写入的代码）
   useEffect(() => {
     if (!isElectron) return;
-    const api = (window as any).electronAPI;
+    const api = window.electronAPI;
     if (!api?.tool?.onEditorOpenFile) return;
     const unsub = api.tool.onEditorOpenFile((data: { path: string; content: string }) => {
       if (data?.path) {
@@ -267,7 +267,7 @@ export function EditorPanel({ initialFile }: EditorPanelProps) {
   // 流式写入：订阅 editor:write-start/chunk/done，打字机动画 + 进度条
   useEffect(() => {
     if (!isElectron) return;
-    const api = (window as any).electronAPI;
+    const api = window.electronAPI;
     if (!api?.tool) return;
     const offStart = api.tool.onEditorWriteStart?.((data: { path: string; totalLines: number }) => {
       if (!data?.path) return;
@@ -314,9 +314,9 @@ export function EditorPanel({ initialFile }: EditorPanelProps) {
   // P0 工具融合：订阅 editor:goto 事件，Agent 调 editor_operate goto 时跳转到指定行
   useEffect(() => {
     if (!isElectron) return;
-    const api = (window as any).electronAPI;
+    const api = window.electronAPI;
     if (!api?.editor?.onGoto) return;
-    const unsub = api.editor.onGoto((data: { line: number; path?: string }) => {
+    const unsub = api.editor.onGoto((data: { filePath?: string; line?: number; column?: number }) => {
       const targetLine = Number(data?.line) || 1;
       // 如果指定了 path 且与当前文件不同，先切换（内容已由 open 注入，这里只跳转）
       const ta = textareaRef.current;
@@ -373,9 +373,9 @@ export function EditorPanel({ initialFile }: EditorPanelProps) {
         // 如果没有内容，尝试加载
         if (!fileContents[node.path]) {
           if (isElectron) {
-            const electronAPI = (window as any).electronAPI;
+            const electronAPI = window.electronAPI;
             if (electronAPI?.editor?.readFile) {
-              electronAPI.editor.readFile(node.path).then((result: any) => {
+              electronAPI.editor.readFile(node.path).then((result) => {
                 try {
                   // 验证 IPC 返回结构，防止异常数据导致渲染崩溃
                   if (!result || typeof result !== 'object') {
@@ -400,7 +400,7 @@ export function EditorPanel({ initialFile }: EditorPanelProps) {
                   console.error('[EditorPanel] 处理文件内容失败:', err);
                   setFileContents(prev => ({ ...prev, [node.path]: '' }));
                 }
-              }).catch((err: any) => {
+              }).catch((err: unknown) => {
                 console.error('[EditorPanel] 读取文件失败:', err);
                 setFileContents(prev => ({ ...prev, [node.path]: '' }));
               });
@@ -464,7 +464,7 @@ export function EditorPanel({ initialFile }: EditorPanelProps) {
     const content = fileContents[selectedFile];
     try {
       if (isElectron) {
-        const electronAPI = (window as any).electronAPI;
+        const electronAPI = window.electronAPI;
         if (electronAPI?.editor?.saveFile) {
           await electronAPI.editor.saveFile(selectedFile, content);
         }
@@ -517,12 +517,12 @@ export function EditorPanel({ initialFile }: EditorPanelProps) {
 
   const refreshTree = useCallback(async () => {
     if (isElectron) {
-      const electronAPI = (window as any).electronAPI;
+      const electronAPI = window.electronAPI;
       if (electronAPI?.editor?.readDir) {
         try {
           const tree = await electronAPI.editor.readDir('.');
           // 验证返回的文件树结构，防止异常数据导致渲染崩溃
-          if (Array.isArray(tree) && tree.every((n: any) => n && typeof n.name === 'string' && typeof n.path === 'string')) {
+          if (Array.isArray(tree) && tree.every((n) => n && typeof n.name === 'string' && typeof n.path === 'string')) {
             setFileTree(tree);
           }
         } catch (err) {
@@ -798,7 +798,7 @@ class EditorErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySta
     return { hasError: true, error };
   }
 
-  componentDidCatch(error: Error, info: any) {
+  componentDidCatch(error: Error, info: ErrorInfo) {
     console.error('[EditorPanel] Render error:', error, info);
   }
 

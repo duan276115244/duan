@@ -313,12 +313,17 @@ export class CircuitBreaker {
     }
   }
 
-  private executeWithTimeout<T>(fn: () => Promise<T>): Promise<T> {
+  private async executeWithTimeout<T>(fn: () => Promise<T>): Promise<T> {
     const timeout = this.circuitConfig.timeoutMs;
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
     const timer = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new TimeoutError(this.name, timeout)), timeout);
+      timeoutHandle = setTimeout(() => reject(new TimeoutError(this.name, timeout)), timeout);
     });
-    return Promise.race([fn(), timer]);
+    try {
+      return await Promise.race([fn(), timer]);
+    } finally {
+      if (timeoutHandle) clearTimeout(timeoutHandle);
+    }
   }
 
   private onSuccess(responseTime: number): void {

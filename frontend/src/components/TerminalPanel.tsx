@@ -21,6 +21,7 @@ const ANSI_COLORS: Record<number, string> = {
 
 function renderAnsiText(text: string): React.ReactNode[] {
   const parts: React.ReactNode[] = [];
+  // eslint-disable-next-line no-control-regex -- ANSI 转义序列正则，控制字符是必须的
   const regex = /\x1b\[(\d+)m/g;
   let lastIndex = 0;
   let currentColor: string | null = null;

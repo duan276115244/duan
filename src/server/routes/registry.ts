@@ -23,6 +23,7 @@ import { registerMCPSecurityRoutes } from './mcp-security-routes.js';
 import { registerMCPMarketplaceRoutes } from './mcp-marketplace-routes.js';
 import { registerApiV1Routes } from './api-v1-routes.js';
 import { registerSubAgentRoutes } from './subagent-routes.js';
+import { registerWorkflowRoutes } from './workflow-routes.js';
 import { registerCapabilityRoutes } from './capability-routes.js';
 
 export function registerRoutes(app: express.Application, ctx: ServerContext): void {
@@ -41,6 +42,9 @@ export function registerRoutes(app: express.Application, ctx: ServerContext): vo
 
   // C1 修复：SubAgent SSE 端点 + POST 端点（POST 需要 ServerContext 获取 orchestrator）
   registerSubAgentRoutes(app, ctx);
+
+  // Phase 3A: 工作流构建器路由（CRUD + 验证 + 执行 + SSE）
+  registerWorkflowRoutes(app, ctx);
 
   // P3: 开放 API v1 路由（独立前缀，不重写）
   registerApiV1Routes(app, ctx);

@@ -51,7 +51,7 @@ export class VoiceInteraction {
       return Promise.resolve(this.openaiClient);
     }
 
-    if (!this.openaiClientPromise) {
+    if (this.openaiClientPromise === null) {
       this.openaiClientPromise = import('openai')
         .then(OpenAI => {
           this.openaiClient = new OpenAI.OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -201,7 +201,8 @@ export class VoiceInteraction {
           stability: 0.5,
           similarity_boost: 0.75
         }
-      })
+      }),
+      signal: AbortSignal.timeout(30000),
     });
 
     if (!response.ok) {

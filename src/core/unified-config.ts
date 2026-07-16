@@ -214,7 +214,7 @@ export class UnifiedConfigManager {
   /** 获取脱敏配置（用于日志/API 返回，apiKey 显示为 ****） */
   getMaskedConfig(): UnifiedConfig {
     const decrypted = this.decryptConfig(this.config);
-    const masked: UnifiedConfig = JSON.parse(JSON.stringify(decrypted));
+    const masked: UnifiedConfig = structuredClone(decrypted);
     for (const key of Object.keys(masked.profiles)) {
       const p = masked.profiles[key];
       if (p.apiKey) {
@@ -700,7 +700,7 @@ export class UnifiedConfigManager {
 
   /** 解密整个配置的 apiKey 字段（返回副本） */
   private decryptConfig(config: UnifiedConfig): UnifiedConfig {
-    const result: UnifiedConfig = JSON.parse(JSON.stringify(config));
+    const result: UnifiedConfig = structuredClone(config);
     for (const key of Object.keys(result.profiles)) {
       result.profiles[key].apiKey = this.encryptor.decrypt(result.profiles[key].apiKey);
     }

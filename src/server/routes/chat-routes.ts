@@ -290,6 +290,15 @@ ${vals.map((v: { name: string; weight: number; description: string }) => `- ${v.
       } else if (event.type === 'tool_result') {
         reactSteps.push({ phase: 'observe', content: event.content, timestamp: new Date().toISOString() });
         res.write(`data: ${JSON.stringify({ type: 'tool_result', chunk: event.content, toolName: event.toolName })}\n\n`);
+      } else if (event.type === 'warning') {
+        // 系统告警透传：模型 404/402/限速/超时/网络错误/上下文过长等，前端渲染为 amber 横幅
+        res.write(`data: ${JSON.stringify({ type: 'warning', content: event.content })}\n\n`);
+      } else if (event.type === 'compact') {
+        // 上下文压缩通知透传：前端渲染为 📦 压缩卡片（对标 Claude Code compaction cards）
+        res.write(`data: ${JSON.stringify({ type: 'compact', content: event.content })}\n\n`);
+      } else if (event.type === 'plan') {
+        // 执行计划事件透传：保留结构化 plan 字段，前端可独立渲染计划卡片
+        res.write(`data: ${JSON.stringify({ type: 'plan', content: event.content, plan: event.plan })}\n\n`);
       }
     }
 
@@ -475,7 +484,9 @@ app.post('/api/chat/stream', (req: express.Request, res: express.Response) => {
         if (analysis.confidence > 0.6 && analysis.approaches.length > 0) {
           preAnalysis = `意图分析: ${analysis.understanding} (置信度${(analysis.confidence*100).toFixed(0)}%)\n推荐方案:\n${analysis.approaches.map((a: string, i: number) => `${i+1}. ${a}`).join('\n')}`;
         }
-      } catch {}
+      } catch (e) {
+        console.warn('[chat-routes] 意图分析失败:', e instanceof Error ? e.message : String(e));
+      }
     }
     if (preAnalysis) {
       reactMessages.push({ role: 'system', content: `决策引擎分析结果:\n${preAnalysis}\n请参考以上分析结果执行任务。` });

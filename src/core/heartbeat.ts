@@ -92,13 +92,11 @@ export class Heartbeat {
   // 用递归 setTimeout 替代 setInterval，确保上一次 beat 完成后才安排下一次，彻底避免心跳重叠
   private scheduleNext(): void {
     if (!this.running) return;
-    this.timer = setTimeout(async () => {
+    this.timer = setTimeout(() => {
       this.timer = null;
-      try {
-        await this.beat();
-      } finally {
-        this.scheduleNext();
-      }
+      void this.beat()
+        .catch(() => {})
+        .finally(() => this.scheduleNext());
     }, this.config.intervalMs);
   }
 

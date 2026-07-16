@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { UnifiedToolDef } from '../../core/unified-tool-def.js';
 import { duanPath } from '../../core/duan-paths.js';
+import { mapWithConcurrency } from '../../utils/concurrency.js';
 
 // P0 跨平台修复：使用统一的 duanPath 解析（默认 ~/.duan，可用 DUAN_DATA_DIR 覆盖）
 const MEMORY_DIR = duanPath('memories');
@@ -18,9 +19,9 @@ async function loadMemories(): Promise<MemEntry[]> {
   try {
     await ensureMemoryDir();
     const files = (await fs.promises.readdir(MEMORY_DIR)).filter(f => f.endsWith('.json'));
-    const entries = await Promise.all(files.map(async f => {
+    const entries = await mapWithConcurrency(files, 8, async f => {
       try { return JSON.parse(await fs.promises.readFile(path.join(MEMORY_DIR, f), 'utf-8')); } catch { return null; }
-    }));
+    });
     return entries.filter(Boolean) as MemEntry[];
   } catch { return []; }
 }

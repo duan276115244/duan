@@ -1,0 +1,31 @@
+[Unit]
+Description=Duan Agent - Super AI Assistant
+Description[zh_CN]=段先生智能助手
+Documentation=https://github.com/duanxiansheng/agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# 安装路径（根据实际部署调整）
+ExecStart=/usr/local/bin/duan agent
+ExecStop=/bin/kill -TERM $MAINPID
+# 工作目录
+WorkingDirectory=%h
+# 用户级运行
+User=%i
+# 环境变量
+Environment=NODE_ENV=production
+Environment=DUAN_DATA_DIR=%h/.duan
+# 重启策略
+Restart=on-failure
+RestartSec=5
+StartLimitBurst=3
+StartLimitIntervalSec=60
+# 日志
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=duan-agent
+
+[Install]
+WantedBy=multi-user.target

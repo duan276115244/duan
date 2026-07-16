@@ -5,7 +5,7 @@ export interface Message {
   content: string;
   timestamp: Date;
   thinking?: string;
-  toolCalls?: Array<{ name: string; args?: any; result?: string }>;
+  toolCalls?: Array<{ name: string; args?: unknown; result?: string; duration?: number; status?: 'running' | 'success' | 'error' }>;
 }
 
 export interface Conversation {
@@ -98,11 +98,13 @@ export interface BackendConfig {
 
 // ===== 聊天事件 =====
 export interface ChatEvent {
-  type: 'text' | 'think' | 'tool_call' | 'tool_result' | 'agent_switch' | 'done' | 'error';
+  type: 'text' | 'think' | 'tool_call' | 'tool_result' | 'agent_switch' | 'done' | 'error' | 'warning' | 'compact' | 'plan';
   content?: string;
   toolName?: string;
-  toolArgs?: any;
+  toolArgs?: unknown;
   agentId?: string;
+  /** plan 事件携带的结构化计划对象（仅 type='plan' 时有值） */
+  plan?: Record<string, unknown>;
 }
 
 // ===== 主题 =====

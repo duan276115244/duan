@@ -14,6 +14,18 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // 分割 vendor 库为独立 chunk：并行加载 + 长期缓存
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom'],
+          'markdown': ['react-markdown'],
+          'icons': ['lucide-react'],
+        },
+      },
+    },
+  },
   server: {
     port: 5173,
     host: '0.0.0.0',

@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, Server, Store, Shield, Loader2, CheckCircle, Download, Trash2, RefreshCw, Clock, X } from 'lucide-react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { ArrowLeft, Server, Store, Shield, Loader2, CheckCircle, Download, Trash2, RefreshCw, Clock, X, Lock, AlertTriangle, Filter } from 'lucide-react';
 
 // ===== 类型 =====
 interface McpPlugin {
@@ -16,6 +16,13 @@ interface McpPlugin {
   trustLevel?: 'trusted' | 'verified' | 'untrusted' | 'blocked';
   enabled?: boolean;
   installStatus?: 'installed' | 'available';
+  // ===== 富卡片增强字段（后端已富，前端优雅读取，缺失则跳过）=====
+  ratingCount?: number;
+  lastUpdated?: string;
+  compatibility?: string;
+  permissions?: string[];
+  signature?: { signedBy?: string; valid?: boolean };
+  maintenanceStatus?: 'active' | 'maintained' | 'deprecated' | 'unknown';
 }
 
 interface PendingApproval {
@@ -64,6 +71,9 @@ export function McpManagePage({ onBack }: { onBack?: () => void }) {
   const [actionId, setActionId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  // ===== 市场 Tab 富功能 state =====
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<'rating' | 'downloads' | 'lastUpdated'>('rating');
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -74,17 +84,17 @@ export function McpManagePage({ onBack }: { onBack?: () => void }) {
     setLoading(true);
     setError(null);
     try {
-      const api = (window as any).electronAPI;
+      const api = window.electronAPI;
       const useIpc = !!api?.mcp?.listMarketplace;
       // Electron 模式优先 IPC（生产 file:// origin 无法裸 fetch /api）；Web 模式回退 fetch
-      const installedP: Promise<{ success: boolean; plugins: McpPlugin[] }> = useIpc
-        ? api.mcp.listInstalled()
+      const installedP: Promise<{ success: boolean; plugins?: McpPlugin[] }> = useIpc
+        ? api!.mcp.listInstalled()
         : apiGet<{ success: boolean; plugins: McpPlugin[] }>('/api/mcp/marketplace/installed');
-      const marketP: Promise<{ success: boolean; plugins: McpPlugin[] }> = useIpc
-        ? api.mcp.listMarketplace()
+      const marketP: Promise<{ success: boolean; plugins?: McpPlugin[] }> = useIpc
+        ? api!.mcp.listMarketplace()
         : apiGet<{ success: boolean; plugins: McpPlugin[] }>('/api/mcp/marketplace/list');
       const pendingP: Promise<{ total: number; pending: PendingApproval[] }> = useIpc
-        ? api.mcp.listMarketplace().then(() => ({ total: 0, pending: [] as PendingApproval[] }))
+        ? api!.mcp.listMarketplace().then(() => ({ total: 0, pending: [] as PendingApproval[] }))
         : apiGet<{ total: number; pending: PendingApproval[] }>('/api/mcp/security/pending');
       const statusP: Promise<SecurityStatus> = useIpc
         ? Promise.resolve({})
@@ -109,7 +119,7 @@ export function McpManagePage({ onBack }: { onBack?: () => void }) {
   const handleInstall = async (id: string) => {
     setActionId(id);
     try {
-      const api = (window as any).electronAPI;
+      const api = window.electronAPI;
       const r = api?.mcp?.installPlugin
         ? await api.mcp.installPlugin(id)
         : await apiPost(`/api/mcp/marketplace/install/${encodeURIComponent(id)}`);
@@ -126,7 +136,7 @@ export function McpManagePage({ onBack }: { onBack?: () => void }) {
   const handleUninstall = async (id: string) => {
     setActionId(id);
     try {
-      const api = (window as any).electronAPI;
+      const api = window.electronAPI;
       const r = api?.mcp?.uninstallPlugin
         ? await api.mcp.uninstallPlugin(id)
         : await apiPost(`/api/mcp/marketplace/uninstall/${encodeURIComponent(id)}`);
@@ -155,6 +165,40 @@ export function McpManagePage({ onBack }: { onBack?: () => void }) {
   };
 
   const RISK_COLOR: Record<string, string> = { low: '#10b981', medium: '#f59e0b', high: '#f97316', critical: '#ef4444' };
+
+  // ===== 市场 Tab：分类 facet 聚合 + 过滤排序 =====
+  const tagFacets = useMemo(() => {
+    const facets: Record<string, number> = {};
+    marketPlugins.forEach(p => {
+      (p.tags || []).forEach(tag => {
+        facets[tag] = (facets[tag] || 0) + 1;
+      });
+    });
+    return facets;
+  }, [marketPlugins]);
+
+  const filteredAndSortedMarketPlugins = useMemo(() => {
+    const list = selectedTag
+      ? marketPlugins.filter(p => (p.tags || []).includes(selectedTag))
+      : marketPlugins;
+    const sorted = [...list];
+    switch (sortBy) {
+      case 'rating':
+        sorted.sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
+        break;
+      case 'downloads':
+        sorted.sort((a, b) => (b.downloads ?? 0) - (a.downloads ?? 0));
+        break;
+      case 'lastUpdated':
+        sorted.sort((a, b) => {
+          const ta = a.lastUpdated ? new Date(a.lastUpdated).getTime() : 0;
+          const tb = b.lastUpdated ? new Date(b.lastUpdated).getTime() : 0;
+          return tb - ta;
+        });
+        break;
+    }
+    return sorted;
+  }, [marketPlugins, selectedTag, sortBy]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', color: '#e2e8f0', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
@@ -239,20 +283,90 @@ export function McpManagePage({ onBack }: { onBack?: () => void }) {
             {marketPlugins.length === 0 ? (
               <EmptyState icon={Store} text="市场暂无可用插件" hint="后端 MCPMarketplace 注册表为空" />
             ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12 }}>
-                {marketPlugins.map(p => {
-                  const isInstalled = installed.some(i => i.id === p.id) || p.installStatus === 'installed';
-                  return (
-                    <PluginCard
-                      key={p.id}
-                      plugin={p}
-                      isInstalled={isInstalled}
-                      actionLoading={actionId === p.id}
-                      onUninstall={() => handleUninstall(p.id)}
-                      onInstall={() => handleInstall(p.id)}
-                    />
-                  );
-                })}
+              <div style={{ display: 'flex', gap: 16 }}>
+                {/* 分类筛选侧栏 */}
+                <div style={{ width: 180, flexShrink: 0 }}>
+                  <div className="glass-effect" style={{ padding: 12, borderRadius: 10, position: 'sticky', top: 0 }}>
+                    <div style={{ fontSize: 11, color: '#64748b', marginBottom: 10, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <Filter style={{ width: 12, height: 12 }} />
+                      分类筛选
+                    </div>
+                    <button
+                      onClick={() => setSelectedTag(null)}
+                      style={{
+                        display: 'block', width: '100%', textAlign: 'left',
+                        padding: '6px 8px', marginBottom: 4, borderRadius: 6,
+                        background: selectedTag === null ? 'rgba(6,182,212,.1)' : 'transparent',
+                        border: '1px solid ' + (selectedTag === null ? 'rgba(6,182,212,.2)' : 'transparent'),
+                        color: selectedTag === null ? '#06b6d4' : '#94a3b8',
+                        cursor: 'pointer', fontSize: 11, fontFamily: 'inherit',
+                      }}
+                    >
+                      全部 <span style={{ color: '#475569' }}>({marketPlugins.length})</span>
+                    </button>
+                    {Object.entries(tagFacets).sort((a, b) => b[1] - a[1]).map(([tag, count]) => (
+                      <button
+                        key={tag}
+                        onClick={() => setSelectedTag(tag)}
+                        style={{
+                          display: 'block', width: '100%', textAlign: 'left',
+                          padding: '6px 8px', marginBottom: 4, borderRadius: 6,
+                          background: selectedTag === tag ? 'rgba(6,182,212,.1)' : 'transparent',
+                          border: '1px solid ' + (selectedTag === tag ? 'rgba(6,182,212,.2)' : 'transparent'),
+                          color: selectedTag === tag ? '#06b6d4' : '#94a3b8',
+                          cursor: 'pointer', fontSize: 11, fontFamily: 'inherit',
+                        }}
+                      >
+                        {tag} <span style={{ color: '#475569' }}>({count})</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 主区：排序 + 卡片网格 */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  {/* 排序下拉 */}
+                  <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end' }}>
+                    <span style={{ fontSize: 11, color: '#64748b' }}>排序:</span>
+                    <select
+                      value={sortBy}
+                      onChange={(e) => setSortBy(e.target.value as 'rating' | 'downloads' | 'lastUpdated')}
+                      style={{
+                        padding: '5px 10px', borderRadius: 6, fontSize: 12,
+                        background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.08)',
+                        color: '#e2e8f0', fontFamily: 'inherit', outline: 'none', cursor: 'pointer',
+                      }}
+                    >
+                      <option value="rating">评分</option>
+                      <option value="downloads">下载量</option>
+                      <option value="lastUpdated">最近更新</option>
+                    </select>
+                    <span style={{ fontSize: 11, color: '#475569' }}>
+                      {filteredAndSortedMarketPlugins.length} / {marketPlugins.length}
+                    </span>
+                  </div>
+
+                  {/* 卡片网格 */}
+                  {filteredAndSortedMarketPlugins.length === 0 ? (
+                    <EmptyState icon={Filter} text="该分类下暂无插件" hint="试试选择其他分类或「全部」" />
+                  ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12 }}>
+                      {filteredAndSortedMarketPlugins.map(p => {
+                        const isInstalled = installed.some(i => i.id === p.id) || p.installStatus === 'installed';
+                        return (
+                          <PluginCard
+                            key={p.id}
+                            plugin={p}
+                            isInstalled={isInstalled}
+                            actionLoading={actionId === p.id}
+                            onUninstall={() => handleUninstall(p.id)}
+                            onInstall={() => handleInstall(p.id)}
+                          />
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -358,9 +472,43 @@ function PluginCard({ plugin, isInstalled, actionLoading, onInstall, onUninstall
         {plugin.type && <Tag text={plugin.type} color="#8b5cf6" />}
         {plugin.trustLevel && <Tag text={plugin.trustLevel} color={TRUST_COLOR[plugin.trustLevel] || '#64748b'} />}
         {plugin.category && <Tag text={plugin.category} color="#06b6d4" />}
-        {typeof plugin.rating === 'number' && <Tag text={`★ ${plugin.rating.toFixed(1)}`} color="#f59e0b" />}
+        {typeof plugin.rating === 'number' && <Tag text={`★ ${plugin.rating.toFixed(1)}${plugin.ratingCount ? ` (${plugin.ratingCount})` : ''}`} color="#f59e0b" />}
         {typeof plugin.downloads === 'number' && <Tag text={`↓ ${plugin.downloads}`} color="#64748b" />}
       </div>
+      {/* ===== 富卡片增强：维护状态 / 权限 / 兼容性 / 签名 / 更新时间 ===== */}
+      {(plugin.maintenanceStatus || (plugin.permissions && plugin.permissions.length > 0) || plugin.compatibility || (plugin.signature && plugin.signature.signedBy) || plugin.lastUpdated) && (
+        <div style={{ marginBottom: 10, padding: 8, borderRadius: 6, background: 'rgba(0,0,0,.15)', border: '1px solid rgba(255,255,255,.03)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {plugin.maintenanceStatus && <MaintenanceBadge status={plugin.maintenanceStatus} />}
+          {plugin.permissions && plugin.permissions.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+              <Lock style={{ width: 10, height: 10, color: '#64748b', flexShrink: 0 }} />
+              {plugin.permissions.slice(0, 3).map((perm, i) => (
+                <span key={i} style={{ fontSize: 10, color: '#94a3b8' }}>{perm}</span>
+              ))}
+              {plugin.permissions.length > 3 && (
+                <span style={{ fontSize: 10, color: '#64748b' }}>+{plugin.permissions.length - 3}</span>
+              )}
+            </div>
+          )}
+          {plugin.compatibility && (
+            <div style={{ fontSize: 10, color: '#64748b' }}>兼容: {plugin.compatibility}</div>
+          )}
+          {plugin.signature && plugin.signature.signedBy && (
+            <div style={{ fontSize: 10, color: plugin.signature.valid === false ? '#f59e0b' : '#10b981', display: 'flex', alignItems: 'center', gap: 4 }}>
+              {plugin.signature.valid === false
+                ? <AlertTriangle style={{ width: 10, height: 10 }} />
+                : <Lock style={{ width: 10, height: 10 }} />}
+              {plugin.signature.valid === false ? `签名无效 (${plugin.signature.signedBy})` : `签名: ${plugin.signature.signedBy}`}
+            </div>
+          )}
+          {plugin.lastUpdated && (
+            <div style={{ fontSize: 10, color: '#475569', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <Clock style={{ width: 10, height: 10 }} />
+              更新于 {new Date(plugin.lastUpdated).toLocaleDateString()}
+            </div>
+          )}
+        </div>
+      )}
       <div>
         {isInstalled ? (
           <button
@@ -389,6 +537,28 @@ function PluginCard({ plugin, isInstalled, actionLoading, onInstall, onUninstall
 function Tag({ text, color }: { text: string; color: string }) {
   return (
     <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 6, background: `${color}1a`, color, border: `1px solid ${color}30` }}>{text}</span>
+  );
+}
+
+function MaintenanceBadge({ status }: { status: 'active' | 'maintained' | 'deprecated' | 'unknown' }) {
+  const colors: Record<string, string> = {
+    active: '#10b981',
+    maintained: '#06b6d4',
+    deprecated: '#ef4444',
+    unknown: '#64748b',
+  };
+  const labels: Record<string, string> = {
+    active: '活跃',
+    maintained: '维护中',
+    deprecated: '已弃用',
+    unknown: '未知',
+  };
+  const color = colors[status] || '#64748b';
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, color }}>
+      <span style={{ width: 6, height: 6, borderRadius: '50%', background: color, display: 'inline-block', boxShadow: `0 0 4px ${color}80` }} />
+      {labels[status] || status}
+    </span>
   );
 }
 

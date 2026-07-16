@@ -368,8 +368,8 @@ export class AgentConfig {
       return null;
     }
 
-    // 深拷贝以避免外部修改
-    const exported: AgentConfigDefinition = JSON.parse(JSON.stringify(config));
+    // 深拷贝以避免外部修改（structuredClone 比 JSON.parse(JSON.stringify()) 更快且支持 Date/Map 等类型）
+    const exported: AgentConfigDefinition = structuredClone(config);
 
     EventBus.getInstance().emitSync('agentconfig.exported', {
       agentId: config.id,

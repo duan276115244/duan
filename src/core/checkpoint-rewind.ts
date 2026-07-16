@@ -84,7 +84,9 @@ export class CheckpointManager {
           const shared = this.internContent(hash, content);
           fileMap.set(filePath, { content: shared, hash });
         }
-      } catch {}
+      } catch (e) {
+        console.warn('[CheckpointRewind] 读取文件失败:', e instanceof Error ? e.message : String(e));
+      }
     }
 
     if (fileMap.size === 0) {
@@ -237,13 +239,17 @@ export class CheckpointManager {
             id: data.id, timestamp: data.timestamp, label: data.label, files: fileMap,
             metadata: data.metadata,
           });
-        } catch {}
+        } catch (e) {
+          console.warn('[CheckpointRewind] 加载检查点条目失败:', e instanceof Error ? e.message : String(e));
+        }
       }
       if (this.checkpoints.length > 0) {
         this.checkpoints.sort((a, b) => a.timestamp - b.timestamp);
         this.currentIndex = this.checkpoints.length - 1;
       }
-    } catch {}
+    } catch (e) {
+      console.warn('[CheckpointRewind] 加载检查点目录失败:', e instanceof Error ? e.message : String(e));
+    }
   }
 
   private async pathExists(filePath: string): Promise<boolean> {

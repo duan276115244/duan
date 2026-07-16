@@ -401,7 +401,6 @@ ${text}
 
       try {
         const buf = await fs.promises.readFile(pdfPath);
-        // @ts-expect-error - pdf-parse 可能未安装
         const pdfParse = (await import('pdf-parse')).default;
         const data = await pdfParse(buf, { max: maxPages });
         let report = `📄 **PDF 文字提取** | ${path.basename(pdfPath)}\n${'─'.repeat(50)}\n\n`;
@@ -641,7 +640,7 @@ ${String(rawContent).substring(0, 12000)}
       let rate: number | null = null;
       let dataSource = '';
       try {
-        const resp = await fetch(`https://open.er-api.com/v6/latest/${from}`, { method: 'GET' });
+        const resp = await fetch(`https://open.er-api.com/v6/latest/${from}`, { method: 'GET', signal: AbortSignal.timeout(10000) });
         if (resp.ok) {
           const json = await resp.json() as { rates?: Record<string, number> };
           if (json.rates && typeof json.rates[to] === 'number') {

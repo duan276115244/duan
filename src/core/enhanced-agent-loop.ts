@@ -116,8 +116,10 @@ export { normalizeToolCallArgsForHistory } from './enhanced-agent-loop-utils.js'
 import {
   type ExtendedThinkingContext,
   type ThinkingPhaseEvent,
+  type ThinkingDepth,
   runExtendedThinking,
   runExtendedThinkingStream,
+  detectExplicitThinkingLevel,
   decomposeProblem,
   identifyConstraints,
   generateSolutions,
@@ -253,6 +255,8 @@ export class EnhancedAgentLoop {
   private _legacyReasoningEngine: any | null = null;
   private modelRouter: ModelRouter | null = null;
   private projectKnowledge: any | null = null;
+  /** v20.0 项目分层记忆加载器 — 对标 CLAUDE.md 多层级记忆 */
+  private _projectMemoryLoader: any | null = null;
   /** 知识图谱 — 实体/关系/路径推理，注入到系统提示增强上下文 */
   private _knowledgeGraph: any | null = null;
   // 阶段三：Prompt 编排 + 上下文管理
@@ -436,6 +440,9 @@ export class EnhancedAgentLoop {
   private _compactCircuitBreakerOpen: boolean = false;
   /** P0-1: 已喂入 CompactionSystem 的消息索引（避免重复喂入） */
   private _compactionFedIndex: number = 0;
+  /** Token 估算缓存：同一 messages.length+compactCount 下结果不变，避免每轮重复遍历所有字符 */
+  private _cachedTokenEstimate: number = -1;
+  private _cachedTokenEstimateKey: string = '';
   /** P0-2: System Prompt 分层缓存 — 避免每次主循环迭代重新构建+文件读取 */
   private _stablePromptCache: string | null = null;
   private _stablePromptCacheKey: string = '';
@@ -504,12 +511,11 @@ export class EnhancedAgentLoop {
     if (this._warmUpStarted) return;
     this._warmUpStarted = true;
 
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
     try {
       const clientInfo = this.getClient();
       if (!clientInfo) return; // 无可用 client，静默跳过
-
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 8000);
 
       // 最小预检请求：stream=true + max_tokens=1，只读首 chunk 确认连通
       const stream = await clientInfo.client.chat.completions.create({
@@ -520,8 +526,7 @@ export class EnhancedAgentLoop {
       }, { signal: controller.signal });
 
       for await (const _chunk of stream) {
-        clearTimeout(timeout);
-        controller.abort();
+        // 首字节到达 — 预检通过，break 会调 generator.return() 关闭流
         break;
       }
 
@@ -531,6 +536,10 @@ export class EnhancedAgentLoop {
     } catch {
       // 预热失败 — 清缓存，首次 run() 会重新预检
       this._preflightPassed = false;
+    } finally {
+      // 所有路径（成功/失败/空流/早退）都清理 timer 并兜底终止连接
+      clearTimeout(timeout);
+      controller.abort();
     }
   }
   /** P1-5: 当前 Thread/Turn ID — 用于工具执行时记录 Item */
@@ -567,7 +576,9 @@ export class EnhancedAgentLoop {
         const profile = JSON.parse(fs.readFileSync(profilePath, 'utf-8'));
         this.smartToolSelector.injectUserProfile(profile);
       }
-    } catch {}
+    } catch (e) {
+      console.warn('[EnhancedAgentLoop] 加载用户画像失败:', e instanceof Error ? e.message : String(e));
+    }
     this.capabilityGapDetector = new CapabilityGapDetector([]);
     this.learningEngine = new LearningEngine();
     this.reasoningEngine = new ReasoningEngine({
@@ -976,6 +987,8 @@ export class EnhancedAgentLoop {
     }
   }
   injectProjectKnowledge(pk: any): void { this.projectKnowledge = pk; }
+  /** 注入项目分层记忆加载器 — v20.0 对标 CLAUDE.md 多层级记忆 */
+  injectProjectMemoryLoader(loader: any): void { this._projectMemoryLoader = loader; }
   injectSelfAssessment(sa: any): void { this.selfAssessment = sa; }
   injectAutonomousThinker(at: any): void { this.autonomousThinker = at; }
   injectReasoningEngine(re: any): void { this._legacyReasoningEngine = re; }
@@ -1741,7 +1754,9 @@ export class EnhancedAgentLoop {
       this._lastVerifyTime = now;
 
       const path = await import('path');
-      const { execSync } = await import('child_process');
+      const { exec } = await import('child_process');
+      const { promisify } = await import('util');
+      const execAsync = promisify(exec);
       const resolved = path.resolve(filePath);
 
       let verifyResult = '';
@@ -1758,15 +1773,17 @@ export class EnhancedAgentLoop {
       if (!verifyCmd) return;
 
       try {
-        execSync(verifyCmd, {
+        // 异步执行验证，不阻塞事件循环（原 execSync 会阻塞长达 15s）
+        await execAsync(verifyCmd, {
           timeout: 15000,
           encoding: 'utf-8',
-          stdio: 'pipe',
           cwd: process.cwd(),
+          maxBuffer: 1024 * 1024,
         });
         // 验证通过，不注入消息（避免噪音）
-      } catch (verifyErr: any) {
-        const stderr = verifyErr.stderr || verifyErr.stdout || '';
+      } catch (verifyErr: unknown) {
+        const err = verifyErr as { stderr?: string | Buffer; stdout?: string | Buffer };
+        const stderr = err.stderr || err.stdout || '';
         const errorText = stderr.toString().substring(0, 800);
         if (errorText.trim()) {
           verifyResult = `⚠️ 自动验证：${path.basename(resolved)} 语法检查发现问题：\n${errorText.trim()}\n请检查并修复上述错误。`;
@@ -2247,7 +2264,9 @@ export class EnhancedAgentLoop {
           this._projectRulesCacheMtime = stat.mtimeMs;
           return content;
         }
-      } catch {}
+      } catch (e) {
+        console.warn('[EnhancedAgentLoop] 读取项目规则失败:', e instanceof Error ? e.message : String(e));
+      }
     }
     this._projectRulesCache = '';
     this._projectRulesCacheTime = now;
@@ -2575,6 +2594,14 @@ export class EnhancedAgentLoop {
         } catch {}
       }
 
+      // v20.0 收集项目分层记忆（对标 CLAUDE.md 多层级记忆）
+      let projectMemory: string | null = null;
+      if (this._projectMemoryLoader) {
+        try {
+          projectMemory = await this._projectMemoryLoader.getMergedText();
+        } catch {}
+      }
+
       // 情感识别
       let emotionInfo: PromptContext['emotionInfo'] = null;
       try {
@@ -2614,6 +2641,7 @@ export class EnhancedAgentLoop {
         toolDescriptions,
         maxTokens: 2300,
         projectKnowledge,
+        projectMemory,
         customSystemPrompt: customSystemPrompt || undefined,
         emotionInfo,
         // P2-1 修复：主路径注入 persona prompt — 个性化层（之前只在降级路径 buildSystemPrompt 中注入）
@@ -3198,9 +3226,10 @@ export class EnhancedAgentLoop {
         }
       }
 
-      // Token 预检：发送前估算用量
-      const preflightTokens = this.estimateMessageTokens(state.messages);
+      // Token 预检：发送前估算用量（复用 getCompactionUsage 的缓存，避免重复遍历）
+      const preflightUsage = this.getCompactionUsage(state);
       const budget = this.config.tokenBudget || DEFAULT_TOKEN_BUDGET;
+      const preflightTokens = Math.round(preflightUsage * budget);
       if (preflightTokens > budget * 0.95) {
         yield { type: 'warning', content: `⚠️ Token 预检: 当前消息约 ${preflightTokens} tokens (预算 ${budget})，接近上限，将强制压缩` };
         try {
@@ -5292,7 +5321,14 @@ export class EnhancedAgentLoop {
    * @returns 使用率 0-1
    */
   private getCompactionUsage(state: AgentState): number {
-    const estimatedTokens = this.estimateMessageTokens(state.messages);
+    // 缓存 token 估算：消息只追加不修改，同一 length+compactCount 下结果不变
+    // 避免每轮 2-4 次调用 estimateMessageTokens 重复遍历所有字符（O(N×M)）
+    const cacheKey = `${state.messages.length}:${state.compactCount}`;
+    if (cacheKey !== this._cachedTokenEstimateKey) {
+      this._cachedTokenEstimate = this.estimateMessageTokens(state.messages);
+      this._cachedTokenEstimateKey = cacheKey;
+    }
+    const estimatedTokens = this._cachedTokenEstimate;
     const budget = state.tokenBudget || this.config.tokenBudget || DEFAULT_TOKEN_BUDGET;
     return budget > 0 ? estimatedTokens / budget : 0;
   }
@@ -5642,9 +5678,19 @@ export class EnhancedAgentLoop {
    */
   private _detectTaskComplexity(input: string): {
     shouldTrigger: boolean;
-    depth: 'shallow' | 'medium' | 'deep';
+    depth: ThinkingDepth;
     reason: string;
   } {
+    // v20.0: 优先检测用户显式思考触发词（ultrathink/极限思考/深入思考等）
+    const explicitLevel = detectExplicitThinkingLevel(input);
+    if (explicitLevel) {
+      return {
+        shouldTrigger: true,
+        depth: explicitLevel.level,
+        reason: `用户显式触发「${explicitLevel.label}」`,
+      };
+    }
+
     const lowerInput = input.toLowerCase();
     let score = 0;
     const reasons: string[] = [];
@@ -5717,7 +5763,7 @@ export class EnhancedAgentLoop {
    * P1-2: 执行 Extended Thinking — 多步逻辑检查 + 边缘情况枚举
    * 转发到 extended-thinking-service.ts 的无状态函数
    */
-  private _runExtendedThinking(problem: string, depth: 'shallow' | 'medium' | 'deep'): Promise<string> {
+  private _runExtendedThinking(problem: string, depth: ThinkingDepth): Promise<string> {
     return runExtendedThinking(this._buildExtendedThinkingContext(), problem, depth);
   }
 
@@ -5727,10 +5773,12 @@ export class EnhancedAgentLoop {
    * 与 _runExtendedThinking 的关系：本方法是真正的流式入口（async generator），
    * _runExtendedThinking 保留为兼容包装（消费本流并 join 成字符串）。
    * 主循环在 Execute 前调用本方法，让前端可以看到推理步骤逐步展开。
+   *
+   * v20.0: 支持 L1-L4 四级思考预算
    */
   private async *_runExtendedThinkingStream(
     problem: string,
-    depth: 'shallow' | 'medium' | 'deep',
+    depth: ThinkingDepth,
   ): AsyncGenerator<ThinkingPhaseEvent, void, void> {
     yield* runExtendedThinkingStream(this._buildExtendedThinkingContext(), problem, depth);
   }

@@ -341,9 +341,9 @@ export class FullDuplexDialogue extends EventEmitter {
     });
 
     // 轮次完成：用户说完 → 生成响应 → 播放
-    this.inputChannel.on('turnComplete', async (utterance: string) => {
+    this.inputChannel.on('turnComplete', (utterance: string) => {
       if (utterance.trim().length === 0) return;
-      await this.handleTurn(utterance);
+      void this.handleTurn(utterance).catch(() => {});
     });
   }
 
@@ -390,6 +390,8 @@ export class FullDuplexDialogue extends EventEmitter {
  */
 export class ContextAwareDialogue {
   private sessionStore: Map<string, any> = new Map();
+  /** 会话存储最大条目数，超过时 FIFO 淘汰最旧会话 */
+  private maxSessions = 50;
 
   /**
    * 加载会话上下文
@@ -429,6 +431,11 @@ export class ContextAwareDialogue {
   persistContext(userId: string, context: any): Promise<void> {
     context.lastInteraction = Date.now();
     this.sessionStore.set(userId, context);
+    // FIFO 淘汰：超过上限时删除最旧的会话
+    if (this.sessionStore.size > this.maxSessions) {
+      const oldestKey = this.sessionStore.keys().next().value;
+      if (oldestKey) this.sessionStore.delete(oldestKey);
+    }
     return Promise.resolve();
   }
 }

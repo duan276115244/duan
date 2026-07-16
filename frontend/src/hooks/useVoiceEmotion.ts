@@ -1,5 +1,8 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 
+/** Window with webkitAudioContext (Safari/older Chrome) */
+type WindowWithWebkitAudio = typeof window & { webkitAudioContext?: typeof AudioContext };
+
 /**
  * 语音情感识别 Hook — 基于 Web Audio API 的实时音频特征分析
  *
@@ -156,7 +159,7 @@ export function useVoiceEmotion(options: UseVoiceEmotionOptions = {}): UseVoiceE
 
   const [supported] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
-    return !!(window.AudioContext || (window as any).webkitAudioContext) && !!navigator.mediaDevices?.getUserMedia;
+    return !!(window.AudioContext || (window as WindowWithWebkitAudio).webkitAudioContext) && !!navigator.mediaDevices?.getUserMedia;
   });
   const [isActive, setIsActive] = useState(false);
   const [emotion, setEmotion] = useState<VoiceEmotionState | null>(null);
@@ -177,7 +180,7 @@ export function useVoiceEmotion(options: UseVoiceEmotionOptions = {}): UseVoiceE
       rafRef.current = null;
     }
     if (sourceRef.current) {
-      try { sourceRef.current.disconnect(); } catch {}
+      try { sourceRef.current.disconnect(); } catch { /* ignore */ }
       sourceRef.current = null;
     }
     if (streamRef.current) {
@@ -268,7 +271,7 @@ export function useVoiceEmotion(options: UseVoiceEmotionOptions = {}): UseVoiceE
       streamRef.current = stream;
 
       // 创建 AudioContext
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      const AudioCtx = window.AudioContext || (window as WindowWithWebkitAudio).webkitAudioContext;
       const ctx = new AudioCtx();
       audioContextRef.current = ctx;
 
@@ -287,10 +290,10 @@ export function useVoiceEmotion(options: UseVoiceEmotionOptions = {}): UseVoiceE
       setError(undefined);
       lastAnalysisRef.current = 0;
       rafRef.current = requestAnimationFrame(analyzeFrame);
-    } catch (e: any) {
-      const msg = e?.name === 'NotAllowedError'
+    } catch (e: unknown) {
+      const msg = e instanceof Error && e.name === 'NotAllowedError'
         ? '麦克风权限被拒绝，请在浏览器设置中允许'
-        : `启动音频分析失败: ${e?.message || String(e)}`;
+        : `启动音频分析失败: ${e instanceof Error ? e.message : String(e)}`;
       setError(msg);
       stop();
     }

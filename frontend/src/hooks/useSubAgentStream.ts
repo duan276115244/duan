@@ -1,4 +1,4 @@
-/**
+﻿/**
  * useSubAgentStream — SubAgent 多 Agent 实时事件流 hook
  *
  * Web 模式：new EventSource('/api/subagent/stream') 直连后端 SSE
@@ -275,6 +275,108 @@ export function useSubAgentStream() {
     }
   }, []);
 
+  // 启动自定义团队
+  const startCustomTeam = useCallback(async (config: unknown): Promise<{ success?: boolean; message?: string; error?: string } | null> => {
+    if (isElectron()) {
+      return window.electronAPI?.subAgent?.startCustomTeam(config) ?? null;
+    }
+    try {
+      const res = await fetch('/api/subagent/team/custom', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config),
+      });
+      if (!res.ok) {
+        console.warn(`启动自定义团队失败: HTTP ${res.status}`);
+        return null;
+      }
+      return res.json();
+    } catch (error) {
+      console.warn('启动自定义团队网络错误:', error);
+      return null;
+    }
+  }, []);
+
+  // 列出执行历史
+  const listHistory = useCallback(async (): Promise<Array<{ id: string; teamName: string; success: boolean; duration: number; memberCount: number }>> => {
+    if (isElectron()) {
+      const r = await window.electronAPI?.subAgent?.listHistory();
+      return r?.history || [];
+    }
+    try {
+      const res = await fetch('/api/subagent/team/history');
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data?.history || [];
+    } catch {
+      return [];
+    }
+  }, []);
+
+  // 获取单次执行详情
+  const getExecution = useCallback(async (id: string): Promise<unknown> => {
+    if (isElectron()) {
+      const r = await window.electronAPI?.subAgent?.getExecution(id);
+      return r?.execution || null;
+    }
+    try {
+      const res = await fetch(`/api/subagent/team/history?id=${encodeURIComponent(id)}`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data?.execution || null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  // 列出自定义模板
+  const listCustomTemplates = useCallback(async (): Promise<unknown[]> => {
+    if (isElectron()) {
+      const r = await window.electronAPI?.subAgent?.listCustomTemplates();
+      return r?.templates || [];
+    }
+    try {
+      const res = await fetch('/api/subagent/team/custom-templates');
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data?.templates || [];
+    } catch {
+      return [];
+    }
+  }, []);
+
+  // 保存自定义模板
+  const saveCustomTemplate = useCallback(async (template: unknown): Promise<{ success?: boolean; template?: unknown; message?: string; error?: string } | null> => {
+    if (isElectron()) {
+      return window.electronAPI?.subAgent?.saveCustomTemplate(template) ?? null;
+    }
+    try {
+      const res = await fetch('/api/subagent/team/custom-templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(template),
+      });
+      if (!res.ok) return null;
+      return res.json();
+    } catch {
+      return null;
+    }
+  }, []);
+
+  // 删除自定义模板
+  const deleteCustomTemplate = useCallback(async (id: string): Promise<{ success?: boolean; message?: string } | null> => {
+    if (isElectron()) {
+      return window.electronAPI?.subAgent?.deleteCustomTemplate(id) ?? null;
+    }
+    try {
+      const res = await fetch(`/api/subagent/team/custom-templates/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      if (!res.ok) return null;
+      return res.json();
+    } catch {
+      return null;
+    }
+  }, []);
+
   return {
     events,
     activeAgents,
@@ -284,5 +386,11 @@ export function useSubAgentStream() {
     startTeam,
     listAgents,
     listTemplates,
+    startCustomTeam,
+    listHistory,
+    getExecution,
+    listCustomTemplates,
+    saveCustomTemplate,
+    deleteCustomTemplate,
   };
 }

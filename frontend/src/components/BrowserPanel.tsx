@@ -8,8 +8,27 @@ interface Bookmark {
   url: string;
 }
 
+interface WebviewElement extends HTMLElement {
+  getURL: () => string;
+  canGoBack: () => boolean;
+  canGoForward: () => boolean;
+  loadURL: (url: string) => void;
+  goBack: () => void;
+  goForward: () => void;
+  reload: () => void;
+  stop: () => void;
+}
+
+interface PerformanceWithMemory {
+  memory?: {
+    usedJSHeapSize: number;
+    totalJSHeapSize: number;
+    jsHeapSizeLimit: number;
+  };
+}
+
 // ===== Electron 环境检测 =====
-const isElectron = typeof window !== 'undefined' && !!(window as any).electronAPI;
+const isElectron = typeof window !== 'undefined' && !!window.electronAPI;
 
 // ===== 默认书签 =====
 const DEFAULT_BOOKMARKS: Bookmark[] = [
@@ -22,6 +41,7 @@ const DEFAULT_BOOKMARKS: Bookmark[] = [
 interface BrowserPanelProps {
   navigateUrl?: string;
 }
+
 
 export function BrowserPanel({ navigateUrl }: BrowserPanelProps) {
   const [url, setUrl] = useState('about:blank');
@@ -45,7 +65,7 @@ export function BrowserPanel({ navigateUrl }: BrowserPanelProps) {
   const [canGoBack, setCanGoBack] = useState(false);
   const [canGoForward, setCanGoForward] = useState(false);
   const [pageTitle, setPageTitle] = useState('');
-  const webviewRef = useRef<any>(null);
+  const webviewRef = useRef<WebviewElement | null>(null);
 
   // 持久化书签
   useEffect(() => {
@@ -59,9 +79,10 @@ export function BrowserPanel({ navigateUrl }: BrowserPanelProps) {
 
     const logSystemState = (event: string) => {
       // 捕获异常发生前的系统状态，用于排查黑屏问题
-      const memInfo = (performance as any).memory ? {
-        usedJS: Math.round((performance as any).memory.usedJSHeapSize / 1024 / 1024) + 'MB',
-        totalJS: Math.round((performance as any).memory.totalJSHeapSize / 1024 / 1024) + 'MB',
+      const mem = (performance as PerformanceWithMemory).memory;
+      const memInfo = mem ? {
+        usedJS: Math.round(mem.usedJSHeapSize / 1024 / 1024) + 'MB',
+        totalJS: Math.round(mem.totalJSHeapSize / 1024 / 1024) + 'MB',
       } : 'N/A';
       console.warn(`[BrowserPanel] ${event} | URL: ${wv.getURL?.() || 'unknown'} | Mem: ${JSON.stringify(memInfo)} | Time: ${new Date().toISOString()}`);
     };
@@ -78,9 +99,9 @@ export function BrowserPanel({ navigateUrl }: BrowserPanelProps) {
         }
       } catch { /* ignore */ }
     };
-    const onLoadProgress = (e: any) => { setProgress(Math.min(e.progress, 100)); };
+    const onLoadProgress = (e: unknown) => { const ev = e as { progress?: number }; setProgress(Math.min(ev.progress ?? 0, 100)); };
     const onLoadStop = () => { setLoading(false); setProgress(100); setTimeout(() => setProgress(0), 500); };
-    const onTitleUpdate = (e: any) => { setPageTitle(e.title || ''); };
+    const onTitleUpdate = (e: unknown) => { setPageTitle((e as { title?: string }).title || ''); };
     const onNavigate = () => {
       try {
         setCanGoBack(wv.canGoBack());
@@ -99,9 +120,10 @@ export function BrowserPanel({ navigateUrl }: BrowserPanelProps) {
       }
     };
     // 拦截新窗口请求，在当前 webview 中打开
-    const onNewWindow = (e: any) => {
-      e.preventDefault();
-      const newUrl = e.url;
+    const onNewWindow = (e: unknown) => {
+      const ev = e as { preventDefault: () => void; url?: string };
+      ev.preventDefault();
+      const newUrl = ev.url;
       if (newUrl) {
         setUrl(newUrl);
         setInputUrl(newUrl);
@@ -113,7 +135,7 @@ export function BrowserPanel({ navigateUrl }: BrowserPanelProps) {
       }
     };
     // 加载失败处理
-    const onLoadFail = (_e: any, errorCode: number, errorDesc: string, validatedURL: string) => {
+    const onLoadFail = (_e: unknown, errorCode: number = -1, errorDesc: string = '', validatedURL: string = '') => {
       console.error(`[BrowserPanel] Load failed: errorCode=${errorCode} desc=${errorDesc} URL=${validatedURL}`);
       // 修复双重导航：如果失败 URL 与当前导航目标一致，说明是真正的加载失败；
       // 如果不一致，可能是被后续导航取消的旧请求，忽略此错误
@@ -444,9 +466,9 @@ export function BrowserPanel({ navigateUrl }: BrowserPanelProps) {
                 <RotateCw style={{ width: 14, height: 14 }} />
                 重试
               </button>
-              {url !== 'about:blank' && isElectron && (window as any).electronAPI?.shell?.openExternal && (
+              {url !== 'about:blank' && isElectron && window.electronAPI?.shell?.openExternal && (
                 <button
-                  onClick={() => { try { (window as any).electronAPI.shell.openExternal(url); } catch { /* ignore */ } }}
+                  onClick={() => { try { void window.electronAPI?.shell?.openExternal?.(url); } catch { /* ignore */ } }}
                   style={{
                     padding: '8px 20px', borderRadius: 8, border: '1px solid rgba(16,185,129,.2)',
                     background: 'transparent', color: '#94a3b8',

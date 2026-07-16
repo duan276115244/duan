@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect, forwardRef, useImperativeHandle } from 'react';
+﻿import { useState, useRef, useCallback, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { Mic, MicOff, Loader2 } from 'lucide-react';
 
 interface VoiceInputProps {
@@ -16,6 +16,27 @@ export interface VoiceInputHandle {
   startListening: () => void;
   /** 程序化停止监听 */
   stopListening: () => void;
+}
+
+interface SpeechRecognitionResultLike {
+  0: { transcript: string };
+  isFinal: boolean;
+}
+
+interface SpeechRecognitionEventLike {
+  resultIndex: number;
+  results: SpeechRecognitionResultLike[];
+}
+
+interface SpeechRecognitionLike {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  start(): void;
+  stop(): void;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: ((event: { error: string }) => void) | null;
+  onend: (() => void) | null;
 }
 
 /**
@@ -37,7 +58,7 @@ export const VoiceInput = forwardRef<VoiceInputHandle, VoiceInputProps>(function
   const [interimText, setInterimText] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -51,10 +72,10 @@ export const VoiceInput = forwardRef<VoiceInputHandle, VoiceInputProps>(function
 
   // 方案 1（Electron 优先）：直接调用 IPC record 模式（PyAudio 直录，最可靠）
   const startElectronRecord = useCallback(async () => {
-    const isE = typeof window !== 'undefined' && !!(window as any).electronAPI;
+    const isE = typeof window !== 'undefined' && !!window.electronAPI;
     if (!isE) return false;
 
-    const api = (window as any).electronAPI;
+    const api = window.electronAPI;
     if (!api?.voice?.transcribe) return false;
 
     try {
@@ -165,7 +186,8 @@ export const VoiceInput = forwardRef<VoiceInputHandle, VoiceInputProps>(function
 
   // 方案 3：浏览器 Web Speech API（作为最后回退）
   const startBrowserASR = useCallback(() => {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const win = window as unknown as { SpeechRecognition?: new () => SpeechRecognitionLike; webkitSpeechRecognition?: new () => SpeechRecognitionLike };
+    const SpeechRecognition = win.SpeechRecognition || win.webkitSpeechRecognition;
     if (!SpeechRecognition) {
       setInterimText('浏览器不支持语音识别');
       setTimeout(() => setInterimText(''), 2000);
@@ -182,7 +204,7 @@ export const VoiceInput = forwardRef<VoiceInputHandle, VoiceInputProps>(function
       recognition.continuous = false;
       recognition.interimResults = true;
 
-      recognition.onresult = (event: any) => {
+      recognition.onresult = (event: SpeechRecognitionEventLike) => {
         let interim = '';
         let final = '';
         for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -198,7 +220,7 @@ export const VoiceInput = forwardRef<VoiceInputHandle, VoiceInputProps>(function
         }
       };
 
-      recognition.onerror = (event: any) => {
+      recognition.onerror = (event: { error: string }) => {
         setIsListening(false);
         setInterimText('');
         if (event.error === 'network' || event.error === 'service-not-allowed' || event.error === 'not-allowed') {
@@ -227,7 +249,7 @@ export const VoiceInput = forwardRef<VoiceInputHandle, VoiceInputProps>(function
   const startListening = useCallback(async () => {
     if (disabled || isProcessing) return;
 
-    const isE = typeof window !== 'undefined' && !!(window as any).electronAPI;
+    const isE = typeof window !== 'undefined' && !!window.electronAPI;
 
     // 优先级 1：Electron 模式使用 PyAudio 直录（最可靠，无需格式转换）
     if (isE) {
@@ -247,7 +269,7 @@ export const VoiceInput = forwardRef<VoiceInputHandle, VoiceInputProps>(function
   const stopListening = useCallback(() => {
     // Electron record 模式：通过 IPC 发送停止信号（优雅停止，能转写已录内容）
     if (electronRecordingRef.current) {
-      const api = (window as any).electronAPI;
+      const api = window.electronAPI;
       if (api?.voice?.stopRecording) {
         setInterimText('正在停止录音并识别...');
         api.voice.stopRecording().catch(() => { /* ignore */ });

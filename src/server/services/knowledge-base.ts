@@ -44,7 +44,9 @@ export class KnowledgeBase {
   private save(): void {
     try {
       atomicWriteJsonSync(this.filePath, this.entries);
-    } catch { /* ignore */ }
+    } catch (e) {
+      console.warn('[KnowledgeBase] 知识库保存失败:', e instanceof Error ? e.message : String(e));
+    }
   }
 
   add(topic: string, content: string, tags: string[], source: string, confidence: number = 0.7): KnowledgeEntry {

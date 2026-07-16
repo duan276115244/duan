@@ -99,6 +99,10 @@ const ARRAY_DEFAULTS_BY_BASENAME = new Set<string>([
   'installed.json',              // mcp-marketplace.ts:982
   // ~/.duan/cache/
   'index.json',                  // smart-cache.ts:760 (注：experience-packs/index.json 是 {}，见 PARENT_DIR_OVERRIDES)
+  // ~/.duan/ 根目录 — 增强功能持久化
+  'agent-team-templates.json',   // subagent-routes.ts 自定义团队模板（TeamTemplate[]）
+  'workflows.json',              // workflow-routes.ts 工作流定义（WorkflowRecord[]）
+  'workflow-executions.json',    // workflow-routes.ts 执行历史（ExecutionRecord[]，FIFO cap 200）
 ]);
 
 /**

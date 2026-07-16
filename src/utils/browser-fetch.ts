@@ -1,4 +1,6 @@
 import type { Browser } from 'puppeteer';
+// v20.0 §4.2：国产系统使用系统 Chromium（替代 puppeteer 自带，支持 LoongArch）
+import { getNativeDepsResolver } from '../core/native-deps.js';
 
 let browserInstance: Browser | null = null;
 let initPromise: Promise<Browser> | null = null;
@@ -11,17 +13,10 @@ export function getBrowser(): Promise<Browser> {
       // 动态导入 puppeteer (ES Module) 兼容 CommonJS 环境
       const puppeteerModule = await import('puppeteer');
       const puppeteer = puppeteerModule.default;
-      const browser = await puppeteer.launch({
-        headless: true,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-gpu',
-          '--disable-extensions',
-        ],
-        ignoreDefaultArgs: ['--enable-automation', '--enable-blink-features=AutomationControlled'],
-      });
+      // v20.0 §4.2：通过 NativeDepsResolver 解析系统 Chromium 路径
+      // 在国产系统（UOS/麒麟/LoongArch）上使用系统安装的 Chromium
+      const launchOptions = getNativeDepsResolver().getPuppeteerLaunchOptions();
+      const browser = await puppeteer.launch(launchOptions);
       browserInstance = browser;
       return browser;
     } finally {
