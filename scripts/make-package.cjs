@@ -95,6 +95,9 @@ const EXCLUDE_FILE_NAMES = [
   'encrypt-core.cjs', 'backup-source.cjs', 'publish-github.cjs',
   'find-dead-code.mjs', 'capability-check.mjs',
   '_cleanup_git.cjs',
+
+  // 解密脚本（明文模式不需要）
+  '_decrypt.cjs',
 ];
 
 // ===== 按扩展名排除 =====
