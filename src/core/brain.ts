@@ -1127,12 +1127,22 @@ ${i.content}
    * 保存所有数据
    */
   async saveAll(): Promise<void> {
-    await Promise.all([
+    // 使用 allSettled 避免单个保存失败导致其他保存结果丢失
+    const results = await Promise.allSettled([
       this.save(),
       this.performanceMetrics.save(),
       this.auditLogger.flush(),
       this.personalization.saveToFile('./data/user-profiles.json'),
     ]);
+    // 对失败的保存操作单独记录日志（不阻断其他保存）
+    const names = ['save', 'performanceMetrics', 'auditLogger', 'personalization'];
+    for (let i = 0; i < results.length; i++) {
+      const r = results[i];
+      if (r.status === 'rejected') {
+        const msg = r.reason instanceof Error ? r.reason.message : String(r.reason);
+        console.warn(`[Brain] saveAll 中 ${names[i]} 失败:`, msg);
+      }
+    }
   }
 
   private async callAI(prompt: string): Promise<string> {
@@ -1169,7 +1179,7 @@ ${i.content}
           {},
           process.env.DEEPSEEK_MODEL || 'deepseek-chat',
         );
-        return completion.choices[0].message.content || '无响应';
+        return completion.choices?.[0]?.message?.content || '无响应';
       }
 
       // OpenRouter via OpenAI-compatible API
@@ -1191,7 +1201,7 @@ ${i.content}
           {},
           process.env.OPENROUTER_MODEL || 'openai/gpt-4o-mini',
         );
-        return completion.choices[0].message.content || '无响应';
+        return completion.choices?.[0]?.message?.content || '无响应';
       }
 
       if (this.openai) {
@@ -1208,7 +1218,7 @@ ${i.content}
           {},
           process.env.OPENAI_MODEL || 'gpt-4-turbo',
         );
-        return completion.choices[0].message.content || '无响应';
+        return completion.choices?.[0]?.message?.content || '无响应';
       }
 
       return '需要配置 AI API 密钥 (支持 Claude / DeepSeek / OpenRouter / OpenAI)';

@@ -2952,8 +2952,14 @@ export function setupAgentLoop(callbacks?: AgentLoopCallbacks): SetupResult {
           interactionCount: moodProfile.interactionCount,
         },
       });
-    } catch {}
+    } catch (err: unknown) {
+      // 记录同步失败，避免静默吞错
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn('[Bootstrap] 情绪画像同步失败:', msg);
+    }
   }, 60000);
+  // 防止定时器阻止进程优雅退出
+  if (typeof emotionSyncId.unref === 'function') emotionSyncId.unref();
 
   return {
     modules, registry, loop,

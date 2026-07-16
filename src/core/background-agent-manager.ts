@@ -386,6 +386,7 @@ export class BackgroundAgentManager {
     this.dirty = true;
     if (!this.persistTimer) {
       this.persistTimer = setTimeout(() => this.flush(), 2000);
+      if (typeof this.persistTimer.unref === 'function') this.persistTimer.unref();
     }
   }
 

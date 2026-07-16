@@ -1166,6 +1166,7 @@ export class ContextRetentionSystem {
     this.dirty = true;
     if (this.saveTimer) clearTimeout(this.saveTimer);
     this.saveTimer = setTimeout(() => this.saveToDisk(), 2000);
+    if (typeof this.saveTimer.unref === 'function') this.saveTimer.unref();
   }
 
   /** 保存到磁盘 */

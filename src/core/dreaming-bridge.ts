@@ -24,6 +24,7 @@ export class DreamingBridge {
 
   start(intervalMs: number = 120000): void {
     this.syncTimer = setInterval(() => this.sync(), intervalMs);
+    if (typeof this.syncTimer.unref === 'function') this.syncTimer.unref();
     this.log.info('DreamingBridge started', { intervalMs });
   }
 

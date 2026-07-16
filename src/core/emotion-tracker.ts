@@ -568,6 +568,7 @@ export class EmotionTracker {
       this.saveTimer = null;
       this.flushSave();
     }, 2000);
+    if (typeof this.saveTimer.unref === 'function') this.saveTimer.unref();
   }
 
   /** 立即保存状态到磁盘 */

@@ -472,6 +472,7 @@ ${fragmentsText}
     this.dirty = true;
     if (!this.persistTimer) {
       this.persistTimer = setTimeout(() => this.flush(), 5000);
+      if (typeof this.persistTimer.unref === 'function') this.persistTimer.unref();
     }
   }
 

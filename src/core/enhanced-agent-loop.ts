@@ -1754,27 +1754,30 @@ export class EnhancedAgentLoop {
       this._lastVerifyTime = now;
 
       const path = await import('path');
-      const { exec } = await import('child_process');
+      const { execFile } = await import('child_process');
       const { promisify } = await import('util');
-      const execAsync = promisify(exec);
+      const execFileAsync = promisify(execFile);
       const resolved = path.resolve(filePath);
 
       let verifyResult = '';
-      let verifyCmd = '';
+      let cmd: string = '';
+      let args: string[] = [];
 
       if (ext === 'js' || ext === 'jsx' || ext === 'mjs' || ext === 'cjs') {
         // JavaScript: node --check 语法检查（快速）
-        verifyCmd = `node --check "${resolved}"`;
+        cmd = 'node';
+        args = ['--check', resolved];
       } else if (ext === 'ts' || ext === 'tsx') {
         // TypeScript: 单文件类型检查（skipLibCheck 加速）
-        verifyCmd = `npx tsc --noEmit --skipLibCheck --target es2020 --module commonjs "${resolved}"`;
+        cmd = 'npx';
+        args = ['tsc', '--noEmit', '--skipLibCheck', '--target', 'es2020', '--module', 'commonjs', resolved];
       }
 
-      if (!verifyCmd) return;
+      if (!cmd) return;
 
       try {
-        // 异步执行验证，不阻塞事件循环（原 execSync 会阻塞长达 15s）
-        await execAsync(verifyCmd, {
+        // 使用 execFile（不走 shell）避免命令注入风险，参数以数组形式传递
+        await execFileAsync(cmd, args, {
           timeout: 15000,
           encoding: 'utf-8',
           cwd: process.cwd(),

@@ -430,7 +430,7 @@ ${context.map(c => c.text).join('\n\n')}
       max_tokens: 2048,
     });
 
-    return completion.choices[0].message.content || '无法回答';
+    return completion.choices?.[0]?.message?.content || '无法回答';
   }
 
   getStats() {

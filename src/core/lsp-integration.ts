@@ -1216,6 +1216,7 @@ export class LSPIntegration {
         await this.startServer(language, server.projectRoot);
       })();
     }, RESTART_DELAY_MS);
+    if (typeof server.restartTimer.unref === 'function') server.restartTimer.unref();
   }
 
   /**

@@ -973,6 +973,7 @@ export class ScalableToolRegistry {
         this.log.error('防抖保存状态失败', { error: errMsg(err) });
       });
     }, DEBOUNCE_SAVE_MS);
+    if (typeof this.saveTimer.unref === 'function') this.saveTimer.unref();
   }
 
   private debouncedSaveMetrics(): void {
@@ -982,6 +983,7 @@ export class ScalableToolRegistry {
         this.log.error('防抖保存指标失败', { error: errMsg(err) });
       });
     }, DEBOUNCE_SAVE_MS);
+    if (typeof this.metricsTimer.unref === 'function') this.metricsTimer.unref();
   }
 
   /** 销毁时清理 */

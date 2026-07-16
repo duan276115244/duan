@@ -1188,6 +1188,7 @@ export class AutonomousEvolutionEngine extends EventEmitter {
       this.cycleTimer = setInterval(() => {
         void this.runCycle();
       }, this.config.cycleInterval);
+      if (typeof this.cycleTimer.unref === 'function') this.cycleTimer.unref();
 
       // 立即执行一次
       void this.runCycle();

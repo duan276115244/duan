@@ -1110,6 +1110,7 @@ class MCPClient {
       this.reconnectTimer = setTimeout(() => {
         this.connect().catch(() => {});
       }, delay);
+      if (typeof this.reconnectTimer.unref === 'function') this.reconnectTimer.unref();
     }
   }
 

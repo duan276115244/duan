@@ -27,6 +27,7 @@ import * as crypto from 'crypto';
 import { logger } from './structured-logger.js';
 import { EventBus } from './event-bus.js';
 import { duanPath } from './duan-paths.js';
+import { atomicWriteJsonSync } from './atomic-write.js';
 
 // ============ 类型定义 ============
 
@@ -520,13 +521,12 @@ export class UnifiedConfigManager {
     try {
       this.ensureDir();
       this.selfWrite = true;
-      const tmp = CONFIG_PATH + '.' + process.pid + '.tmp';
-      fs.writeFileSync(tmp, JSON.stringify(this.config, null, 2), 'utf-8');
-      // POSIX 系统设置 600 权限
+      // 原子写入：统一使用 atomicWriteJsonSync（tmp + rename）
+      atomicWriteJsonSync(CONFIG_PATH, this.config);
+      // POSIX 系统设置 600 权限（含敏感 API key，限制仅所有者可读）
       if (process.platform !== 'win32') {
-        try { fs.chmodSync(tmp, 0o600); } catch {}
+        try { fs.chmodSync(CONFIG_PATH, 0o600); } catch {}
       }
-      fs.renameSync(tmp, CONFIG_PATH);
       // selfWrite 在 handleFileChange 中立即清除（见 handleFileChange），此处不延迟
     } catch (err: unknown) {
       this.selfWrite = false;
@@ -615,12 +615,11 @@ export class UnifiedConfigManager {
     try {
       this.ensureDir();
       this.selfWrite = true;
-      const tmp = CONFIG_PATH + '.' + process.pid + '.tmp';
-      fs.writeFileSync(tmp, JSON.stringify(migrated, null, 2), 'utf-8');
+      // 原子写入：统一使用 atomicWriteJsonSync（tmp + rename）
+      atomicWriteJsonSync(CONFIG_PATH, migrated);
       if (process.platform !== 'win32') {
-        try { fs.chmodSync(tmp, 0o600); } catch {}
+        try { fs.chmodSync(CONFIG_PATH, 0o600); } catch {}
       }
-      fs.renameSync(tmp, CONFIG_PATH);
       setTimeout(() => { this.selfWrite = false; }, 300);
     } catch (err: unknown) {
       this.selfWrite = false;
