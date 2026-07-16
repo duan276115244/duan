@@ -34,7 +34,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const VERSION = 'v21.1';
+const VERSION = 'v21.2';
 
 setupMiddleware(app);
 

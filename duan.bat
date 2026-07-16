@@ -1,10 +1,10 @@
 @echo off
-title Duan Agent v21.1
+title Duan Agent v21.2
 setlocal
 
 echo.
 echo ========================================
-echo    Duan Agent v21.1 - Super AI Assistant
+echo    Duan Agent v21.2 - Super AI Assistant
 echo    Starting...
 echo ========================================
 echo.

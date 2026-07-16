@@ -67,8 +67,16 @@ import { SelfAwareness } from './self-awareness.js';
 import { ValueSystem } from './value-system.js';
 import { GoalSystem } from './goal-system.js';
 import { Heartbeat } from './heartbeat.js';
-import { SubAgentOrchestrator } from './sub-agent-orchestrator.js';
-import { AgentTeamOrchestrator } from './agent-team-orchestrator.js';
+import {
+  SubAgentOrchestrator,
+  getSubAgentToolDefinitions,
+  createSubAgentToolHandler,
+} from './sub-agent-orchestrator.js';
+import {
+  AgentTeamOrchestrator,
+  getAgentTeamToolDefinitions,
+  createAgentTeamToolHandler,
+} from './agent-team-orchestrator.js';
 import { BackgroundAgentManager } from './background-agent-manager.js';
 import { SelfEvolve } from './self-evolve.js';
 import { StrategyEngine } from './strategy-engine.js';
@@ -2644,6 +2652,49 @@ export function createAgentLoop(
     logger.info('v21.1 §D: Plan Mode 工具已注册', { module: 'Bootstrap', count: planModeToolDefs.length });
   } catch (e: unknown) {
     logger.warn('v21.1 §D: Plan Mode 工具注册失败', { module: 'Bootstrap', error: e instanceof Error ? e.message : String(e) });
+  }
+
+  // §E Agent 团队编排工具（team_run_template/list_templates/get_template_info/get_executions/get_execution/get_board/clear_board）
+  try {
+    const agentTeamHandler = createAgentTeamToolHandler(modules.agentTeamOrchestrator);
+    const agentTeamRawDefs = getAgentTeamToolDefinitions();
+    const agentTeamToolDefs: ToolDef[] = agentTeamRawDefs.map(d => ({
+      name: d.name,
+      description: d.description,
+      parameters: {},
+      execute: async (args: Record<string, unknown>) => {
+        const result = await agentTeamHandler(d.name, args);
+        return typeof result === 'string' ? result : JSON.stringify(result);
+      },
+      readOnly: false,
+    }));
+    loop.registerTools(agentTeamToolDefs);
+    registeredCount += agentTeamToolDefs.length;
+    logger.info('v21.1 §E: Agent 团队编排工具已注册', { module: 'Bootstrap', count: agentTeamToolDefs.length });
+  } catch (e: unknown) {
+    logger.warn('v21.1 §E: Agent 团队编排工具注册失败', { module: 'Bootstrap', error: e instanceof Error ? e.message : String(e) });
+  }
+
+  // §F SubAgent 编排工具（subagent_dispatch / dispatch_background / get_result / wait_for / list_background / cancel / list_agents / status）
+  // 对标 Claude Code run_in_background：后台派生子 Agent，立即返回 taskId，主 Agent 不阻塞
+  try {
+    const subAgentHandler = createSubAgentToolHandler(modules.subAgentOrchestrator);
+    const subAgentRawDefs = getSubAgentToolDefinitions();
+    const subAgentToolDefs: ToolDef[] = subAgentRawDefs.map(d => ({
+      name: d.name,
+      description: d.description,
+      parameters: {},
+      execute: async (args: Record<string, unknown>) => {
+        const result = await subAgentHandler(d.name, args);
+        return typeof result === 'string' ? result : JSON.stringify(result);
+      },
+      readOnly: false,
+    }));
+    loop.registerTools(subAgentToolDefs);
+    registeredCount += subAgentToolDefs.length;
+    logger.info('v21.1 §F: SubAgent 编排工具已注册（含 run_in_background 后台模式）', { module: 'Bootstrap', count: subAgentToolDefs.length });
+  } catch (e: unknown) {
+    logger.warn('v21.1 §F: SubAgent 编排工具注册失败', { module: 'Bootstrap', error: e instanceof Error ? e.message : String(e) });
   }
 
   // 工作流工具：视频/测试/文档/图像生成

@@ -1,10 +1,10 @@
 @echo off
-title Duan Agent v21.1 - Installation
+title Duan Agent v21.2 - Installation
 setlocal enabledelayedexpansion
 
 echo.
 echo ========================================
-echo    Duan Agent v21.1 - Installation
+echo    Duan Agent v21.2 - Installation
 echo ========================================
 echo.
 

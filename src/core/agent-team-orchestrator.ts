@@ -422,4 +422,114 @@ export class AgentTeamOrchestrator {
 
     return summary;
   }
+
+  // ============ LLM 工具暴露 ============
+
+  /** 获取该模块暴露给 LLM 的工具定义 */
+  getToolDefinitions() {
+    return getAgentTeamToolDefinitions();
+  }
+}
+
+// ============ LLM 工具定义 ============
+
+/** Agent 团队编排 LLM 工具定义 */
+export function getAgentTeamToolDefinitions() {
+  return [
+    {
+      name: 'team_run_template',
+      description: '运行预定义的 Agent 团队模板（如 code-dev/research/bug-fix）',
+      inputSchema: {
+        type: 'object' as const,
+        properties: {
+          templateName: { type: 'string', description: '模板名称' },
+          taskGoal: { type: 'string', description: '任务目标' },
+          extraContext: { type: 'string', description: '额外上下文（可选）' },
+        },
+        required: ['templateName', 'taskGoal'],
+      },
+    },
+    {
+      name: 'team_list_templates',
+      description: '列出所有可用的 Agent 团队模板',
+      inputSchema: { type: 'object' as const, properties: {} },
+    },
+    {
+      name: 'team_get_template_info',
+      description: '获取指定团队模板的详细信息（成员角色、工具权限等）',
+      inputSchema: {
+        type: 'object' as const,
+        properties: {
+          name: { type: 'string', description: '模板名称' },
+        },
+        required: ['name'],
+      },
+    },
+    {
+      name: 'team_get_executions',
+      description: '获取团队执行历史摘要列表',
+      inputSchema: { type: 'object' as const, properties: {} },
+    },
+    {
+      name: 'team_get_execution',
+      description: '获取指定团队执行的详细信息',
+      inputSchema: {
+        type: 'object' as const,
+        properties: {
+          id: { type: 'string', description: '执行 ID' },
+        },
+        required: ['id'],
+      },
+    },
+    {
+      name: 'team_get_board',
+      description: '获取团队共享上下文板内容（findings/decisions/warnings 等）',
+      inputSchema: { type: 'object' as const, properties: {} },
+    },
+    {
+      name: 'team_clear_board',
+      description: '清空团队共享上下文板',
+      inputSchema: { type: 'object' as const, properties: {} },
+    },
+  ];
+}
+
+/** Agent 团队编排工具处理器 */
+export function createAgentTeamToolHandler(orchestrator: AgentTeamOrchestrator) {
+  return async (name: string, args: Record<string, unknown>): Promise<unknown> => {
+    switch (name) {
+      case 'team_run_template': {
+        return orchestrator.runTemplate(
+          args.templateName as string,
+          args.taskGoal as string,
+          args.extraContext as string | undefined,
+        );
+      }
+      case 'team_list_templates': {
+        return orchestrator.getTemplates();
+      }
+      case 'team_get_template_info': {
+        const info = orchestrator.getTemplateInfo(args.name as string);
+        if (!info) return { error: `未知模板: ${args.name}` };
+        return info;
+      }
+      case 'team_get_executions': {
+        return orchestrator.getExecutionsSummary();
+      }
+      case 'team_get_execution': {
+        const exec = orchestrator.getExecution(args.id as string);
+        if (!exec) return { error: `执行不存在: ${args.id}` };
+        return exec;
+      }
+      case 'team_get_board': {
+        return orchestrator.getBoard();
+      }
+      case 'team_clear_board': {
+        orchestrator.clearBoard();
+        return { cleared: true };
+      }
+      default:
+        return { error: `未知工具: ${name}` };
+    }
+  };
 }

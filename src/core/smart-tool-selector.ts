@@ -490,6 +490,25 @@ const BUILTIN_TOOL_METAS: ToolMeta[] = [
   { name: 'plan_confirm', category: 'plan', risk: 'moderate', keywords: ['计划', '确认', '批准', '开始执行', 'plan', 'confirm', 'approve', 'start'] },
   { name: 'plan_cancel', category: 'plan', risk: 'moderate', keywords: ['计划', '取消', '放弃', 'plan', 'cancel', 'abort', '取消计划'] },
   { name: 'plan_list', category: 'read', risk: 'safe', keywords: ['计划', '列表', '所有计划', 'plan', 'list', '计划列表', '历史计划'] },
+
+  // ===== v21.1 P5: Agent 团队编排工具（对标 OpenHands Planner-Executor）=====
+  { name: 'team_run_template', category: 'execute', risk: 'moderate', keywords: ['团队', 'team', '模板', 'run template', '启动团队', '代码开发团队', '研究团队', 'bug修复团队'] },
+  { name: 'team_list_templates', category: 'read', risk: 'safe', keywords: ['团队', 'team', '模板列表', 'list templates', '可用团队', 'team templates'] },
+  { name: 'team_get_template_info', category: 'read', risk: 'safe', keywords: ['团队', 'team', '模板详情', 'template info', '模板信息'] },
+  { name: 'team_get_executions', category: 'read', risk: 'safe', keywords: ['团队', 'team', '执行历史', 'executions', '执行记录', '团队执行'] },
+  { name: 'team_get_execution', category: 'read', risk: 'safe', keywords: ['团队', 'team', '执行详情', 'execution', '获取执行', '执行结果'] },
+  { name: 'team_get_board', category: 'read', risk: 'safe', keywords: ['团队', 'team', '上下文板', 'board', 'shared context', '共享板', '消息板'] },
+  { name: 'team_clear_board', category: 'write', risk: 'moderate', keywords: ['团队', 'team', '清空板', 'clear board', '清除消息', '重置上下文板'] },
+
+  // ===== v21.1 P6: SubAgent 编排 + 后台模式（对标 Claude Code run_in_background）=====
+  { name: 'subagent_dispatch', category: 'execute', risk: 'moderate', keywords: ['子代理', 'subagent', 'dispatch', '派生', '专家代理', 'spawn agent', '同步派生'] },
+  { name: 'subagent_dispatch_background', category: 'execute', risk: 'moderate', keywords: ['子代理', 'subagent', 'background', '后台', 'run_in_background', '后台派生', '异步派生', '后台任务'] },
+  { name: 'subagent_get_result', category: 'read', risk: 'safe', keywords: ['子代理', 'subagent', 'result', '结果', '获取结果', '后台结果', '轮询结果'] },
+  { name: 'subagent_wait_for', category: 'read', risk: 'safe', keywords: ['子代理', 'subagent', 'wait', '等待', '等待完成', '阻塞等待', 'wait for'] },
+  { name: 'subagent_list_background', category: 'read', risk: 'safe', keywords: ['子代理', 'subagent', 'list background', '后台任务列表', '后台列表', 'running tasks'] },
+  { name: 'subagent_cancel', category: 'write', risk: 'moderate', keywords: ['子代理', 'subagent', 'cancel', '取消', '取消任务', '终止后台'] },
+  { name: 'subagent_list_agents', category: 'read', risk: 'safe', keywords: ['子代理', 'subagent', 'list agents', '已注册代理', '可用代理', 'agent list'] },
+  { name: 'subagent_status', category: 'read', risk: 'safe', keywords: ['子代理', 'subagent', 'status', '状态', '状态报告', '运行状态'] },
 ];
 
 // ============ 意图→工具类别映射 ============
@@ -643,7 +662,11 @@ const INTENT_KEYWORDS: Record<TaskIntent, { keywords: string[]; weight: number }
       // v21.1 P0-C: Repo Map 属 mixed（read + search 跨类）
       'repo map', '代码地图', '仓库地图', '符号地图', '代码结构',
       // v21.1 P0-D: Plan Mode 属 mixed（plan + execute 跨类）
-      '创建计划', '确认计划', '取消计划', '计划列表', '可编辑计划'],
+      '创建计划', '确认计划', '取消计划', '计划列表', '可编辑计划',
+      // v21.1 P5: Agent 团队编排属 mixed（read + execute 跨类）
+      '团队', 'team', '启动团队', '团队模板', '团队执行', '共享板',
+      // v21.1 P6: SubAgent + 后台模式属 mixed（read + execute 跨类）
+      '子代理', 'subagent', '后台派生', 'run_in_background', '后台任务', '专家代理'],
     weight: 0.3,
   },
 };

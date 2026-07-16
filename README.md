@@ -1,9 +1,9 @@
-# 段先生 v21.1 — 自主进化超级智能体
+# 段先生 v21.2 — 自主进化超级智能体
 
 > **"I am J.A.R.V.I.S., your autonomous AI agent."**
 > 段先生是一个对标 OpenClaw + Codex CLI + ClawHub 体系的自主进化 AI 智能体系统。
 
-> **🚧 状态：Private Beta** — v21.1 主流 Agent 差异化能力补全完成，4 项 P0 全部就绪。
+> **🚧 状态：Private Beta** — v21.2 剩余项目补全完成，6 个模块全部接入主循环 + 测试覆盖。
 
 ---
 
@@ -11,7 +11,7 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                       段先生 v21.1                           │
+│                       段先生 v21.2                           │
 ├─────────────────────────────────────────────────────────────┤
 │  CLI 终端  │  Web 控制台  │  Electron 桌面端                  │
 │            │  (移动端响应式) │  (Windows/macOS/Linux/UOS/麒麟)  │
@@ -59,6 +59,34 @@ npm run dev:desktop
 > **生产构建**：`npm run build:all && npm start`
 > **打包桌面安装包**：`npm run build:exe`
 > **构建分发安装包**：`node scripts/make-package.cjs`（明文源码模式，无需解密）
+
+## v21.2 升级亮点（剩余项目补全 · 6 个模块全部接入 + 测试覆盖）
+
+### P1-P4：4 个核心模块测试补全（188 个新测试）
+- `shadow-git.ts` — 45 个测试（mock execSync，覆盖 createCheckpoint/restore/list/diff）
+- `checkpoint-rewind.ts` — 53 个测试（真实文件 I/O，覆盖 restore/rewind/fastForward/diff/引用计数/持久化）
+- `git-worktree.ts` — 51 个测试（mock execSync，覆盖 create/remove/list/exec/merge/diff/sync/持久化）
+- `tree-sitter-ast.ts` — 39 个测试（真实源文件，覆盖 TS/JS/Python/Go/Rust/Java 解析 + 代码异味 + 依赖图）
+
+### P5：Agent 团队编排工具暴露（对标 OpenHands Planner-Executor）
+- 新增 `getToolDefinitions()` 暴露 7 个 LLM 工具：team_run_template/list_templates/get_template_info/get_executions/get_execution/get_board/clear_board
+- 3 个预定义团队模板：code-dev（代码开发）/research（研究）/bug-fix（修复）
+- 8 种角色：planner/implementer/reviewer/researcher/debugger/architect/tester/writer
+- 44 个单元测试全过
+
+### P6：SubAgent 后台模式 + 工具暴露（对标 Claude Code run_in_background）
+- 新增 `dispatchBackground()` 后台异步派生（立即返回 taskId，主 Agent 不阻塞）
+- 新增 `getBackgroundResult()` 非阻塞查询 + `waitForBackground()` 阻塞等待 + `cancelBackgroundTask()` 取消
+- 新增 `getToolDefinitions()` 暴露 8 个 LLM 工具：subagent_dispatch/dispatch_background/get_result/wait_for/list_background/cancel/list_agents/status
+- 65 个单元测试全过
+
+### 集成与验证
+- smart-tool-selector.ts 新增 15 个工具元信息（team 7 + subagent 8）+ INTENT_KEYWORDS 更新
+- bootstrap.ts 工具注册全部完成
+- tsc 编译 0 错误
+- 7 个测试文件 354 测试全部通过
+
+---
 
 ## v21.1 升级亮点（主流 Agent 差异化能力补全 · 4 项 P0 全部完成）
 
@@ -183,8 +211,8 @@ npm run dev:desktop
 ### 📡 消息通道 + 团队协作
 对标 OpenClaw 的 `channels.*` 配置模式，支持飞书、Telegram、Discord、Slack、企业微信、钉钉、邮件、WhatsApp、Teams、QQ、微信公众号等通道。v20 新增协作引擎：团队成员管理、共享会话实时消息、任务派发（优先级/子任务/截止时间）、团队知识库（private/team/public 可见性）。
 
-### 🛠️ 200+ 内置工具
-浏览器自动操作、Shell 命令、文件系统、桌面控制、代码生成、网络搜索、视频生成等。其中 **44 个办公工具**采用四批分层架构（基础/扩展/进阶/终极）。v20 新增 80+ 工具：项目记忆管理、代码库语义搜索、斜杠命令、子代理派发、多文件编辑、许可管理、角色切换、目标追踪、文档解析、主动提问、技能市场、离线协调、进度可视化、模型微调、团队协作。v21.0 新增 19 个工具：Hooks 管理（5）、AGENTS.md 加载（3）、文件上下文引擎（4）、异步任务托管（7）。v21.1 新增 35 个工具：补全 AST/Checkpoint/CodeGraph/Worktree 工具元信息（20）+ Spec-Driven（7）+ Repo Map（3）+ Plan Mode（5）。
+### 🛠️ 215+ 内置工具
+浏览器自动操作、Shell 命令、文件系统、桌面控制、代码生成、网络搜索、视频生成等。其中 **44 个办公工具**采用四批分层架构（基础/扩展/进阶/终极）。v20 新增 80+ 工具：项目记忆管理、代码库语义搜索、斜杠命令、子代理派发、多文件编辑、许可管理、角色切换、目标追踪、文档解析、主动提问、技能市场、离线协调、进度可视化、模型微调、团队协作。v21.0 新增 19 个工具：Hooks 管理（5）、AGENTS.md 加载（3）、文件上下文引擎（4）、异步任务托管（7）。v21.1 新增 35 个工具：补全 AST/Checkpoint/CodeGraph/Worktree 工具元信息（20）+ Spec-Driven（7）+ Repo Map（3）+ Plan Mode（5）。v21.2 新增 15 个工具：Agent 团队编排（7）+ SubAgent 后台模式（8）。
 
 ### 🔄 自主进化 + 离线能力
 统一主循环（Plan/Execute/Reflect/Learn）自动分析任务质量，发现改进点并应用修复。v20 新增离线协调器：网络状态检测、本地模型检测（Ollama/llama.cpp）、离线模式自动切换、内置 10 条离线知识条目（TypeScript/Python/Git/Linux/正则/HTTP/SQL/Docker/npm/VSCode）。
@@ -221,7 +249,7 @@ npm run verify:all   # typecheck + lint + test
 # 单项验证
 npm run typecheck    # TypeScript 类型检查
 npm run lint         # ESLint 代码规范
-npm run test         # Vitest 单元测试（~3981 测试）
+npm run test         # Vitest 单元测试（~4335 测试）
 ```
 
 ## 安装包构建
