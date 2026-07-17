@@ -29,7 +29,7 @@ import {
   recordRuntimeValue,
   loadRuntimeValues,
   clearRuntimeValues,
-  RUNTIME_VALUES_FILE,
+  _setRuntimeValuesFileForTesting,
 } from '../capability-assessment/runtime-values.js';
 import type { CapabilityReport, CapabilityTestSuite, CapabilityDimensionId } from '../capability-assessment/types.js';
 
@@ -382,30 +382,34 @@ describe('CapabilityAssessment Framework', () => {
   // ---------- 6. Runtime 埋点值 ----------
 
   describe('Runtime 埋点值', () => {
-    // 注意：recordRuntimeValue 写入固定路径 ~/.duan/capability-assessment/runtime-values.json
-    // 测试前备份原文件，测试后恢复，避免破坏真实数据
-    let originalContent: string | null = null;
-    let fileExisted = false;
+    // 通过 _setRuntimeValuesFileForTesting() 将 runtime 埋点值文件重定向到 tmpDir，
+    // 避免测试写入 ~/.duan/ 触发沙箱限制 + 消除跨用例污染 + 无需备份/恢复真实数据
+    let testRuntimeFile: string;
+
+    /** EPERM 安全的文件删除（Windows 并发 I/O 下可能瞬时锁定） */
+    function safeUnlink(filePath: string, retries = 5): void {
+      for (let i = 0; i < retries; i++) {
+        try {
+          if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+          return;
+        } catch {
+          // EPERM/EBUSY: 等待 50ms 后重试
+          const start = Date.now();
+          while (Date.now() - start < 50) { /* busy-wait */ }
+        }
+      }
+    }
 
     beforeEach(() => {
-      if (fs.existsSync(RUNTIME_VALUES_FILE)) {
-        originalContent = fs.readFileSync(RUNTIME_VALUES_FILE, 'utf-8');
-        fileExisted = true;
-      } else {
-        originalContent = null;
-        fileExisted = false;
-      }
+      // 每个用例使用独立的临时文件，避免跨用例污染
+      testRuntimeFile = path.join(tmpDir, `runtime-values-${Date.now()}-${Math.random().toString(36).slice(2)}.json`);
+      _setRuntimeValuesFileForTesting(testRuntimeFile);
     });
 
     afterEach(() => {
-      // 恢复原始内容
-      if (fileExisted && originalContent !== null) {
-        const dir = path.dirname(RUNTIME_VALUES_FILE);
-        fs.mkdirSync(dir, { recursive: true });
-        fs.writeFileSync(RUNTIME_VALUES_FILE, originalContent, 'utf-8');
-      } else if (fs.existsSync(RUNTIME_VALUES_FILE)) {
-        fs.unlinkSync(RUNTIME_VALUES_FILE);
-      }
+      // 恢复默认路径 + 清理临时文件
+      _setRuntimeValuesFileForTesting(null);
+      safeUnlink(testRuntimeFile);
     });
 
     it('recordRuntimeValue + loadRuntimeValues 应往返', () => {
@@ -425,7 +429,7 @@ describe('CapabilityAssessment Framework', () => {
     it('clearRuntimeValues 应清除所有值', () => {
       recordRuntimeValue('test_metric_c', 1);
       clearRuntimeValues();
-      expect(fs.existsSync(RUNTIME_VALUES_FILE)).toBe(false);
+      expect(fs.existsSync(testRuntimeFile)).toBe(false);
     });
   });
 

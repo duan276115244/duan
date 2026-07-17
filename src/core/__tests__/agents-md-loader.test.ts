@@ -191,7 +191,16 @@ describe('AGENTS.md 三层记忆体系', () => {
         const result = loader.load(noGitDir);
         expect(result.repoRoot).toBeNull();
       } finally {
-        fs.rmSync(noGitDir, { recursive: true, force: true });
+        // EPERM 重试：Windows 并发 I/O 下目录可能瞬时锁定
+        for (let i = 0; i < 5; i++) {
+          try {
+            fs.rmSync(noGitDir, { recursive: true, force: true });
+            break;
+          } catch {
+            const start = Date.now();
+            while (Date.now() - start < 50) { /* busy-wait 50ms */ }
+          }
+        }
       }
     });
   });

@@ -31,7 +31,7 @@ function gitSync(args: string[], cwd: string): string {
   return execFileSync('git', args, {
     cwd,
     encoding: 'utf-8',
-    timeout: 15000,
+    timeout: 30000,
     stdio: ['pipe', 'pipe', 'pipe'],
   });
 }
@@ -70,11 +70,11 @@ function writeAndCommit(dir: string, file: string, content: string, message: str
 /** 创建一个空的 bare 仓库作为 remote */
 function createBareRepo(): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'git-assistant-remote-'));
-  execSync('git init --bare', { cwd: dir, encoding: 'utf-8', timeout: 15000 });
+  execSync('git init --bare', { cwd: dir, encoding: 'utf-8', timeout: 30000 });
   // 将 bare 仓库的 HEAD 指向 main，与 createTmpRepo 的默认分支保持一致，
   // 否则 clone 时会 "remote HEAD refers to nonexistent ref" 导致无法 checkout
   try {
-    execSync('git symbolic-ref HEAD refs/heads/main', { cwd: dir, encoding: 'utf-8', timeout: 15000 });
+    execSync('git symbolic-ref HEAD refs/heads/main', { cwd: dir, encoding: 'utf-8', timeout: 30000 });
   } catch {
     // ignore
   }

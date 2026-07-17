@@ -68,7 +68,12 @@ describe('v21 Hooks 增强内置钩子', () => {
       // 所以这个测试改为验证 hook 不抛错
       const result = await hook.handler(makeContext({}));
       expect(['continue', 'modify']).toContain(result.action);
-      fs.rmSync(tmpDir, { recursive: true, force: true });
+      // Windows 上 git 进程可能短暂持有目录锁，带重试的删除
+      for (let i = 0; i < 5; i++) {
+        try { fs.rmSync(tmpDir, { recursive: true, force: true }); break; } catch {
+          const start = Date.now(); while (Date.now() - start < 50) { /* wait */ }
+        }
+      }
     });
 
     it('git 仓库应注入项目上下文', async () => {

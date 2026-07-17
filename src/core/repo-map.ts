@@ -131,7 +131,7 @@ const RUST_PATTERNS: RegexSymbolPattern[] = [
 
 /** Java 符号正则 */
 const JAVA_PATTERNS: RegexSymbolPattern[] = [
-  { type: 'function', pattern: /(?:public|private|protected)?\s*(?:static\s+)?(?:\w[\w<>\[\],\s]*\s+)+(\w+)\s*\(/g },
+  { type: 'function', pattern: /(?:public|private|protected)?\s*(?:static\s+)?(?:\w[\w<>[\],\s]*\s+)+(\w+)\s*\(/g },
   { type: 'class', pattern: /(?:public|private|protected)?\s*(?:abstract\s+)?(?:final\s+)?class\s+(\w+)/g },
   { type: 'interface', pattern: /(?:public|private|protected)?\s*interface\s+(\w+)/g },
 ];

@@ -240,19 +240,34 @@ export class AgentsMdLoader {
 
   /**
    * 检测 git 仓库根目录
+   *
+   * 优先用 `git rev-parse --show-toplevel`（能解析 worktree/submodule），
+   * 失败时回退到向上遍历查找 `.git` 目录（不依赖 git 进程，无超时风险）。
    */
   private detectRepoRoot(cwd: string): string | null {
     try {
       const result = execSync('git rev-parse --show-toplevel', {
         cwd,
         encoding: 'utf-8',
-        timeout: 3000,
+        timeout: 5000,
         stdio: ['pipe', 'pipe', 'ignore'],
       });
-      return result.trim() || null;
+      const root = result.trim();
+      if (root) return root;
     } catch {
-      return null;
+      // git 不可用或超时，走回退逻辑
     }
+    // 回退：向上遍历查找 .git 目录
+    let dir = path.resolve(cwd);
+    while (true) {
+      if (fs.existsSync(path.join(dir, '.git'))) {
+        return dir;
+      }
+      const parent = path.dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+    return null;
   }
 
   /**

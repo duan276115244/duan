@@ -33,6 +33,7 @@ export {
   recordRuntimeValue,
   recordRuntimeValues,
   clearRuntimeValues,
+  getRuntimeValuesFile,
   RUNTIME_VALUES_FILE,
 } from './runtime-values.js';
 export type {

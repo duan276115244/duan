@@ -14,26 +14,41 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 import { ContinuousEvolutionSystem, type CompetitorInfo, type EnhancementItem, type SatisfactionFeedback } from '../continuous-evolution-system.js';
 
 describe('ContinuousEvolutionSystem', () => {
   let system: ContinuousEvolutionSystem;
-  const testDataDir = path.join(process.cwd(), 'data', 'evolution-test-' + Date.now());
+  let testDataDir: string;
+  // 使用 os.tmpdir() 而非 process.cwd()/data/：避免污染项目目录 + Windows 并发 I/O 下 EPERM 更少
+
+  /** EPERM 安全的递归删除（Windows 并发 I/O 下目录可能瞬时锁定） */
+  function safeRmDir(dir: string, retries = 5): void {
+    for (let i = 0; i < retries; i++) {
+      try {
+        if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
+        return;
+      } catch {
+        const start = Date.now();
+        while (Date.now() - start < 50) { /* busy-wait 50ms */ }
+      }
+    }
+  }
 
   beforeEach(() => {
-    // 清理旧数据
-    if (fs.existsSync(testDataDir)) {
-      fs.rmSync(testDataDir, { recursive: true, force: true });
-    }
+    // 每个用例使用独立目录，彻底消除跨用例状态污染
+    //（之前用 const testDataDir 共享同一目录，safeRmDir 在 Windows 下可能因文件锁失败导致残留）
+    testDataDir = path.join(
+      os.tmpdir(),
+      'evolution-test-' + Date.now() + '-' + process.pid + '-' + Math.random().toString(36).slice(2),
+    );
     system = new ContinuousEvolutionSystem(testDataDir);
   });
 
   afterEach(() => {
-    system.stop();
-    // 清理测试数据
-    if (fs.existsSync(testDataDir)) {
-      try { fs.rmSync(testDataDir, { recursive: true, force: true }); } catch {}
-    }
+    try { system.stop(); } catch { /* ignore */ }
+    // 清理测试数据（带 EPERM 重试）
+    safeRmDir(testDataDir);
   });
 
   describe('竞品管理', () => {
@@ -157,13 +172,13 @@ describe('ContinuousEvolutionSystem', () => {
       expect(cycle.id).toMatch(/^weekly-\d+$/);
       expect(cycle.type).toBe('weekly');
       expect(cycle.summary).toContain('每周评审');
-    });
+    }, 60000);
 
     it('每周评审识别优先差距', async () => {
       await system.runDailyCycle();
       const cycle = await system.runWeeklyReview();
       expect(cycle.roadmapUpdates).toBeDefined();
-    });
+    }, 60000);
   });
 
   describe('每月战略重评估', () => {
@@ -173,7 +188,7 @@ describe('ContinuousEvolutionSystem', () => {
       expect(cycle.id).toMatch(/^monthly-\d+$/);
       expect(cycle.type).toBe('monthly');
       expect(cycle.summary).toContain('月度战略重评估');
-    });
+    }, 60000); // 60s：runDailyCycle + runMonthlyAssessment 在并行测试下可能 > 30s
 
     it('月度评估识别竞争优势', async () => {
       await system.runDailyCycle();
@@ -181,7 +196,7 @@ describe('ContinuousEvolutionSystem', () => {
       // 竞争优势应在报告中体现
       const report = system.generateEvolutionReport();
       expect(report).toContain('竞争优势');
-    });
+    }, 60000);
   });
 
   describe('满意度反馈', () => {

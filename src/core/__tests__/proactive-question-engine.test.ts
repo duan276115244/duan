@@ -159,12 +159,16 @@ describe('v20.0 §5.4: ProactiveQuestionEngine', () => {
     });
 
     it('冷却期过后可以提问', async () => {
-      const e = new ProactiveQuestionEngine({ cooldownMs: 100, dailyLimit: 100 }, createTempDataDir());
+      // cooldownMs 2000ms：并行测试下 saveData 的 I/O 可能耗时 500ms+，
+      // askedAt 在 markAsAsked 中 saveData 之前设置，如果 I/O 耗时 > cooldownMs，
+      // 则 canAsk 检查时 elapsed 已超过冷却期导致误判。
+      // 生产默认 5 分钟冷却期不受此影响。
+      const e = new ProactiveQuestionEngine({ cooldownMs: 2000, dailyLimit: 100 }, createTempDataDir());
       await e.initialize();
       await e.askQuestion(contextWithGaps());
       expect(e.canAsk()).toBe(false);
       // 等待冷却期
-      await new Promise(resolve => setTimeout(resolve, 150));
+      await new Promise(resolve => setTimeout(resolve, 2100));
       expect(e.canAsk()).toBe(true);
     });
   });

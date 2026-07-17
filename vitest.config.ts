@@ -6,10 +6,19 @@ export default defineConfig({
     environment: 'node',
     include: ['src/**/*.test.ts'],
     exclude: ['node_modules', 'dist'],
-    // 30000ms 给并行竞争下的冷启动用例留足余量（隔离运行均 <10s，
-    // 但全量 65 文件并行时首用例 import+transform 可达 16s+，15s 会偶发 flaky 超时）
-    testTimeout: 30000,
-    hookTimeout: 30000,
+    // 限制并发线程数：默认全量并行（118 文件）会导致 git 操作超时 + Windows EPERM 文件锁竞争。
+    // 4 线程在吞吐与稳定性间取得平衡：wall-clock ≈15min，git/file 无竞争。
+    poolOptions: {
+      threads: {
+        minThreads: 1,
+        maxThreads: 4,
+      },
+    },
+    // 60000ms：全量 118 文件并行下，git init/execFileSync 在 I/O 竞争下可达 30s+，
+    // 加上 cognitive-state 的 105 次 setMood writeFileSync 等重 I/O 用例，
+    // 30s 全局超时会在并行峰值时偶发 flaky 失败。60s 留足余量。
+    testTimeout: 60000,
+    hookTimeout: 60000,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'text-summary', 'html', 'lcov'],

@@ -16,7 +16,16 @@ describe('CognitiveState', () => {
   });
 
   afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    // EPERM 重试：Windows 并发 I/O 下目录可能瞬时锁定
+    for (let i = 0; i < 5; i++) {
+      try {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+        break;
+      } catch {
+        const start = Date.now();
+        while (Date.now() - start < 50) { /* busy-wait 50ms */ }
+      }
+    }
   });
 
   describe('初始状态', () => {
@@ -62,7 +71,7 @@ describe('CognitiveState', () => {
       expect(history.length).toBe(100);
       // 最旧的5条被移除
       expect(history[0].trigger).toBe('t5');
-    });
+    }, 60000); // 60s：105 次 setMood 各触发一次 writeFileSync，并行 I/O 下可能 > 30s
 
     it('setMood 持久化到文件', () => {
       cs.setMood('confident', 'persist_test');
