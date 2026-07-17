@@ -482,8 +482,9 @@ export class UnifiedDeviceControl extends EventEmitter {
                 capabilities: d.capabilities,
               })),
             });
-          } catch (err: any) {
-            return `设备发现失败: ${err.message || String(err)}`;
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return `设备发现失败: ${msg}`;
           }
         },
       },
@@ -536,8 +537,9 @@ export class UnifiedDeviceControl extends EventEmitter {
           try {
             const state = await system.getState(args.deviceId as string);
             return JSON.stringify({ deviceId: args.deviceId, state });
-          } catch (err: any) {
-            return `状态查询失败: ${err.message || String(err)}`;
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return `状态查询失败: ${msg}`;
           }
         },
       },
@@ -578,8 +580,9 @@ export class UnifiedDeviceControl extends EventEmitter {
               params,
             });
             return JSON.stringify(result);
-          } catch (err: any) {
-            return `设备控制失败: ${err.message || String(err)}`;
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return `设备控制失败: ${msg}`;
           }
         },
       },
@@ -628,8 +631,9 @@ export class UnifiedDeviceControl extends EventEmitter {
               confidence: command.confidence,
               result: result.message,
             });
-          } catch (err: any) {
-            return `自然语言命令执行失败: ${err.message || String(err)}`;
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return `自然语言命令执行失败: ${msg}`;
           }
         },
       },

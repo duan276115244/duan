@@ -773,7 +773,7 @@ export class EnhancedAgentLoop {
     const taskEngine = new TaskExecutionEngine(async (toolName: string, args: any) => {
       const entry = this.toolRegistry.get(toolName);
       if (!entry) return `工具 ${toolName} 不存在`;
-      try { return await entry.definition.execute(args); } catch (e: any) { return `执行失败: ${e.message}`; }
+      try { return await entry.definition.execute(args); } catch (e: unknown) { const msg = e instanceof Error ? e.message : String(e); return `执行失败: ${msg}`; }
     }, {
       // Part A: LLM 智能任务分解回调 — 复用 modelLibrary 将复杂目标分解为结构化步骤
       llmDecompose: async (goal: string, entities?: Record<string, string>) => {
@@ -878,7 +878,7 @@ export class EnhancedAgentLoop {
         execute: async (args: any) => executor.executeTool(tool.name, args, async (name: string, a: any) => {
           const entry = this.toolRegistry.get(name);
           if (!entry) return `工具 ${name} 不存在`;
-          try { return await entry.definition.execute(a); } catch (e: any) { return `执行失败: ${e.message}`; }
+          try { return await entry.definition.execute(a); } catch (e: unknown) { const msg = e instanceof Error ? e.message : String(e); return `执行失败: ${msg}`; }
         }),
       }, 'moderate', 'serial');
     }
@@ -1715,7 +1715,7 @@ export class EnhancedAgentLoop {
     try {
       const rawResult = await Promise.race([executorFn(), timeoutPromise]);
       return typeof rawResult === 'string' ? rawResult : JSON.stringify(rawResult ?? '');
-    } catch (err: any) {
+    } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       return `❌ 工具执行失败: ${msg}`;
     } finally {
@@ -2324,20 +2324,21 @@ export class EnhancedAgentLoop {
         // 预检通过 — 缓存结果
         this._preflightPassed = true;
         this._preflightExpiry = Date.now() + EnhancedAgentLoop.PREFLIGHT_CACHE_TTL_MS;
-      } catch (preflightErr: any) {
+      } catch (preflightErr: unknown) {
         // 预检失败 — 清除缓存
         this._preflightPassed = false;
-        const preflightMsg = String(preflightErr?.message || preflightErr?.code || '').toLowerCase();
+        const errInfo = preflightErr as { message?: string; code?: string | number; status?: number };
+        const preflightMsg = String(errInfo?.message || errInfo?.code || '').toLowerCase();
         // 如果是 401/403/402，说明 API Key 有问题
-        if (preflightErr?.status === 401 || preflightErr?.status === 403) {
-          yield { type: 'error', content: `API Key 无效或权限不足 (HTTP ${preflightErr.status})，请运行 config 重新配置` };
-          return { type: 'error', error: `API auth error: ${preflightErr.status}`, recoverable: true };
+        if (errInfo?.status === 401 || errInfo?.status === 403) {
+          yield { type: 'error', content: `API Key 无效或权限不足 (HTTP ${errInfo.status})，请运行 config 重新配置` };
+          return { type: 'error', error: `API auth error: ${errInfo.status}`, recoverable: true };
         }
-        if (preflightErr?.status === 402) {
+        if (errInfo?.status === 402) {
           yield { type: 'error', content: 'API 余额不足 (HTTP 402)，请充值或切换 Provider' };
           return { type: 'error', error: 'Insufficient balance', recoverable: true };
         }
-        if (preflightErr?.status === 404) {
+        if (errInfo?.status === 404) {
           yield { type: 'error', content: `模型 "${model}" 不可用 (HTTP 404)，请检查模型名称或切换 Provider` };
           return { type: 'error', error: `Model not found: ${model}`, recoverable: true };
         }
@@ -2348,12 +2349,12 @@ export class EnhancedAgentLoop {
           return { type: 'error', error: `API connection timeout for model ${model}`, recoverable: true };
         }
         if (preflightMsg.includes('econnrefused') || preflightMsg.includes('enotfound') || preflightMsg.includes('network') || preflightMsg.includes('fetch failed')) {
-          yield { type: 'error', content: `API 连接失败: ${preflightErr.message || '网络错误'}。无法连接到模型 "${model}"，请检查API地址和网络连接。` };
-          return { type: 'error', error: `API connection failed: ${preflightErr.message}`, recoverable: true };
+          yield { type: 'error', content: `API 连接失败: ${errInfo.message || '网络错误'}。无法连接到模型 "${model}"，请检查API地址和网络连接。` };
+          return { type: 'error', error: `API connection failed: ${errInfo.message}`, recoverable: true };
         }
         // 其他错误（如 rate_limit）也终止，避免假响应
-        yield { type: 'error', content: `API 预检失败: ${preflightErr.message || '未知错误'}。请检查配置后重试。` };
-        return { type: 'error', error: `API preflight failed: ${preflightErr.message}`, recoverable: true };
+        yield { type: 'error', content: `API 预检失败: ${errInfo.message || '未知错误'}。请检查配置后重试。` };
+        return { type: 'error', error: `API preflight failed: ${errInfo.message}`, recoverable: true };
       }
     }
 
@@ -2521,7 +2522,7 @@ export class EnhancedAgentLoop {
         // 将初步计划注入上下文（运行时会动态更新）
         context.push({ role: 'system', content: getPlanStatusString(plan) });
         _initialPlanString = getPlanStatusString(plan);
-      } catch (err: any) {
+      } catch (_err: unknown) {
         // 规划失败静默降级，不打扰用户
       }
     }
@@ -4310,8 +4311,9 @@ export class EnhancedAgentLoop {
           this._recordOutcomeToEvolutionMetrics(state, { type: 'completed', summary: finalOutput }, executionLog);
           return { type: 'completed', summary: await this.checkOutputGuardrail(finalOutput) };
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         state.errorCount++;
+        const msg = err instanceof Error ? err.message : String(err);
         const errorCategory = classifyError(err);
 
         // CircuitBreaker: 记录失败 — 通过公共 recordFailure() 方法，
@@ -4319,7 +4321,7 @@ export class EnhancedAgentLoop {
         this._circuitBreaker?.recordFailure();
 
         const isTimeout = errorCategory === 'timeout';
-        const errorMsg = isTimeout ? 'API请求超时(首字节12秒/整体90秒)，请检查网络或切换供应商' : (err.message || String(err));
+        const errorMsg = isTimeout ? 'API请求超时(首字节12秒/整体90秒)，请检查网络或切换供应商' : msg;
         yield { type: 'error', content: `⚠️ API调用错误: ${errorMsg}` };
 
         // 主动记忆注入：错误恢复阶段注入历史相似错误的修复方案
@@ -5213,8 +5215,9 @@ export class EnhancedAgentLoop {
               });
             } catch {}
           }
-        } catch (err: any) {
-          const errMsg = `工具 ${tc.function.name} 执行错误: ${err.message || err}`;
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          const errMsg = `工具 ${tc.function.name} 执行错误: ${msg}`;
           events.push({ type: 'error', content: `⚠️ ${errMsg}` });
           toolResults.push({ role: 'tool', tool_call_id: tc.id, content: errMsg });
           executionLog.push({ tool: tc.function.name, result: errMsg, success: false });
@@ -5226,7 +5229,7 @@ export class EnhancedAgentLoop {
                 success: false,
                 resultLength: errMsg.length,
                 resultPreview: errMsg.substring(0, 200),
-                error: err.message,
+                error: msg,
               });
             } catch {}
           }

@@ -342,16 +342,16 @@ ${vals.map((v: { name: string; weight: number; description: string }) => `- ${v.
     performanceMetrics.save().catch(err => {
       console.warn(`[Chat] 性能指标保存失败: ${err?.message || err}`);
     });
-  } catch (error) {
-    const err = error as Error;
-    console.error('Chat error:', err);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error('Chat error:', error);
 
     // 错误分类
     let errorCategory: string;
-    if (err.message.includes('timeout')) errorCategory = 'TIMEOUT';
-    else if (err.message.includes('rate limit')) errorCategory = 'RATE_LIMIT';
-    else if (err.message.includes('auth')) errorCategory = 'AUTH_ERROR';
-    else if (err.message.includes('network')) errorCategory = 'NETWORK_ERROR';
+    if (msg.includes('timeout')) errorCategory = 'TIMEOUT';
+    else if (msg.includes('rate limit')) errorCategory = 'RATE_LIMIT';
+    else if (msg.includes('auth')) errorCategory = 'AUTH_ERROR';
+    else if (msg.includes('network')) errorCategory = 'NETWORK_ERROR';
     else errorCategory = 'UNKNOWN';
 
     if (!res.headersSent) {

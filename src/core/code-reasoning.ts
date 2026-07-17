@@ -253,10 +253,11 @@ export class CodeReasoningEngine {
         durationMs: Date.now() - startTime,
       });
       return result;
-    } catch (error: any) {
+    } catch (error: unknown) {
       this.stats.totalErrors++;
-      this.log.error('代码推理失败', { error: error.message });
-      this.emitEvent('code.reasoning.error', { task: task.substring(0, 80), error: error.message });
+      const msg = error instanceof Error ? error.message : String(error);
+      this.log.error('代码推理失败', { error: msg });
+      this.emitEvent('code.reasoning.error', { task: task.substring(0, 80), error: msg });
 
       // 降级到基于规则的推理
       return this.ruleBasedReasonAboutCode(task, language, context);
@@ -341,9 +342,10 @@ export class CodeReasoningEngine {
         durationMs: Date.now() - startTime,
       });
       return result;
-    } catch (error: any) {
+    } catch (error: unknown) {
       this.stats.totalErrors++;
-      this.log.error('逻辑验证失败', { error: error.message });
+      const msg = error instanceof Error ? error.message : String(error);
+      this.log.error('逻辑验证失败', { error: msg });
       return this.ruleBasedVerifyLogic(code, requirements);
     }
   }
@@ -376,9 +378,10 @@ export class CodeReasoningEngine {
         durationMs: Date.now() - startTime,
       });
       return suggestions;
-    } catch (error: any) {
+    } catch (error: unknown) {
       this.stats.totalErrors++;
-      this.log.error('改进建议生成失败', { error: error.message });
+      const msg = error instanceof Error ? error.message : String(error);
+      this.log.error('改进建议生成失败', { error: msg });
       return this.ruleBasedSuggestImprovements(code, language);
     }
   }
@@ -411,9 +414,10 @@ export class CodeReasoningEngine {
         durationMs: Date.now() - startTime,
       });
       return cases;
-    } catch (error: any) {
+    } catch (error: unknown) {
       this.stats.totalErrors++;
-      this.log.error('测试用例生成失败', { error: error.message });
+      const msg = error instanceof Error ? error.message : String(error);
+      this.log.error('测试用例生成失败', { error: msg });
       return this.ruleBasedGenerateTestCases(code, language);
     }
   }

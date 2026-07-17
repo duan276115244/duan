@@ -25,6 +25,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as http from 'http';
+import { exec } from 'child_process';
 import { logger } from './structured-logger.js';
 import { EventBus } from './event-bus.js';
 import { duanPath } from './duan-paths.js';
@@ -865,7 +866,6 @@ export class OfflineCoordinator {
   /** 检测命令是否存在（跨平台） */
   private async commandExists(cmd: string): Promise<boolean> {
     return new Promise((resolve) => {
-      const { exec } = require('child_process');
       const isWindows = process.platform === 'win32';
       const checkCmd = isWindows ? `where ${cmd}` : `which ${cmd}`;
       exec(checkCmd, (err: unknown) => {

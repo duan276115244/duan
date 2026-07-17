@@ -470,6 +470,17 @@ const BUILTIN_TOOL_METAS: ToolMeta[] = [
   { name: 'worktree_diff', category: 'read', risk: 'safe', keywords: ['worktree', '差异', 'diff', '工作树差异', '变更对比'] },
   { name: 'worktree_sync', category: 'execute', risk: 'moderate', keywords: ['worktree', '同步', 'sync', 'rebase', 'stash', '工作树同步'] },
 
+  // ===== v21.3: GitAssistant — 对标 Aider auto-commit 的 Git 集成提交工具 =====
+  // git-assistant.ts — 智能 commit/分支/撤销/远程（8 个工具）
+  { name: 'git_status', category: 'read', risk: 'safe', keywords: ['git', '状态', '仓库状态', 'status', '工作区', '未暂存', 'untracked', 'clean', '查看变更'] },
+  { name: 'git_diff', category: 'read', risk: 'safe', keywords: ['git', 'diff', '差异', '变更内容', 'staged', 'cached', '对比', '查看 diff'] },
+  { name: 'git_commit', category: 'write', risk: 'moderate', keywords: ['git', '提交', 'commit', 'message', 'amend', '暂存', '保存版本', '记录变更'] },
+  { name: 'git_smart_commit', category: 'write', risk: 'moderate', keywords: ['git', '智能提交', 'smart commit', '自动提交', 'auto commit', '自动生成 message', 'aider', 'auto-add'] },
+  { name: 'git_log', category: 'read', risk: 'safe', keywords: ['git', '历史', '提交历史', 'log', 'commits', '版本记录', '查看提交'] },
+  { name: 'git_branch', category: 'execute', risk: 'moderate', keywords: ['git', '分支', 'branch', 'create', 'checkout', 'list', 'merge', '切换分支', '创建分支', '合并分支', '分支列表'] },
+  { name: 'git_undo', category: 'write', risk: 'dangerous', keywords: ['git', '撤销', 'undo', '回滚', 'revert', 'discard', 'stash pop', '放弃修改', '撤销提交', '丢弃变更'] },
+  { name: 'git_push', category: 'execute', risk: 'dangerous', keywords: ['git', '推送', 'push', '远程', 'remote', 'force', '强制推送', '设置上游', 'origin'] },
+
   // ===== v21.1 P0-B: Spec-Driven Development 工件流程（对标 GitHub Spec Kit）=====
   { name: 'spec_create', category: 'plan', risk: 'moderate', keywords: ['spec', '规范', '需求', '创建规范', 'specify', '需求文档', '功能规范'] },
   { name: 'spec_plan', category: 'plan', risk: 'moderate', keywords: ['spec', '技术方案', 'plan', '架构方案', '实现方案', '技术规划'] },
@@ -509,6 +520,19 @@ const BUILTIN_TOOL_METAS: ToolMeta[] = [
   { name: 'subagent_cancel', category: 'write', risk: 'moderate', keywords: ['子代理', 'subagent', 'cancel', '取消', '取消任务', '终止后台'] },
   { name: 'subagent_list_agents', category: 'read', risk: 'safe', keywords: ['子代理', 'subagent', 'list agents', '已注册代理', '可用代理', 'agent list'] },
   { name: 'subagent_status', category: 'read', risk: 'safe', keywords: ['子代理', 'subagent', 'status', '状态', '状态报告', '运行状态'] },
+
+  // ===== v21.3 任务管理工具（对标 Claude Code TodoWrite）=====
+  // 缺失时任务创建/更新/查询在非 mixed 意图下被过滤，LLM 看不到 task_* 工具
+  { name: 'task_create', category: 'plan', risk: 'moderate', keywords: ['任务', '待办', '创建', 'todo', 'task', 'create', '新建任务', '添加任务', 'TodoWrite'] },
+  { name: 'task_update', category: 'plan', risk: 'moderate', keywords: ['任务', '待办', '更新', '状态', 'todo', 'task', 'update', '标记完成', '开始任务', '进度'] },
+  { name: 'task_list', category: 'read', risk: 'safe', keywords: ['任务', '待办', '列表', '所有任务', 'todo', 'task', 'list', '任务列表', '查看任务'] },
+  { name: 'task_delete', category: 'write', risk: 'moderate', keywords: ['任务', '待办', '删除', '移除', 'todo', 'task', 'delete', 'remove'] },
+  { name: 'task_stats', category: 'read', risk: 'safe', keywords: ['任务', '待办', '统计', '进度', 'todo', 'task', 'stats', '汇总', '完成率'] },
+
+  // ===== v21.3 §E: @-mention 上下文引用解析器（对标 Cursor @-mention）=====
+  // mention-resolver.ts — @file/@symbol/@web/@folder/@search 解析 + 上下文注入
+  { name: 'mention_resolve', category: 'read', risk: 'safe', keywords: ['@-mention', '引用', '上下文', 'mention', '@file', '@symbol', '@web', '@folder', '@search', 'resolve', '解析引用', '注入上下文'] },
+  { name: 'mention_search', category: 'search', risk: 'safe', keywords: ['项目搜索', '符号搜索', 'mention', 'search', 'symbol', 'grep', '查找符号', '搜索代码', '符号查找'] },
 ];
 
 // ============ 意图→工具类别映射 ============
@@ -559,7 +583,16 @@ const INTENT_KEYWORDS: Record<TaskIntent, { keywords: string[]; weight: number }
       'bug', 'fix', 'implement', 'refactor', '测试', 'test', '实现', '修改代码',
       // 修复: 移除过于宽泛的 '写' —— 它会匹配"写简历"/"写邮件"/"写文章"等非 code 场景
       // 改用更精确的 '写代码'，避免抢走 chat/file/desktop 意图
-      '写代码', '编写代码'],
+      '写代码', '编写代码',
+      // v21.3: 任务管理关键词 — Claude Code TodoWrite 用于跟踪多步骤编码任务的进度，
+      // 编码场景下需要触发 task_* 工具（file 意图已含通用待办关键词，此处补 code 意图）
+      'task', '任务', '待办', 'todo',
+      // v21.3: Git 集成提交工具关键词（对标 Aider auto-commit）
+      'git', 'commit', '提交', 'push', '分支', 'branch', 'git 提交', '智能提交', 'auto commit',
+      'aider', '回滚提交', '撤销提交',
+      // v21.3 §E: @-mention 上下文引用关键词（对标 Cursor @-mention）— 用户在对话中
+      // 引用文件/符号/网页/目录/搜索时，需触发 mention_resolve / mention_search 工具
+      '@', '引用', 'mention', '上下文', '@file', '@symbol', '@web', '@folder', '@search'],
     weight: 1.0,
   },
   browse: {
@@ -666,7 +699,9 @@ const INTENT_KEYWORDS: Record<TaskIntent, { keywords: string[]; weight: number }
       // v21.1 P5: Agent 团队编排属 mixed（read + execute 跨类）
       '团队', 'team', '启动团队', '团队模板', '团队执行', '共享板',
       // v21.1 P6: SubAgent + 后台模式属 mixed（read + execute 跨类）
-      '子代理', 'subagent', '后台派生', 'run_in_background', '后台任务', '专家代理'],
+      '子代理', 'subagent', '后台派生', 'run_in_background', '后台任务', '专家代理',
+      // v21.3: Git 集成提交属 mixed（read diff + write commit + execute push 跨类）
+      'git status', 'git diff', 'git log', 'git branch', 'git undo', 'git push', 'auto commit'],
     weight: 0.3,
   },
 };

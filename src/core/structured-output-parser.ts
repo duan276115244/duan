@@ -323,7 +323,7 @@ export class StructuredOutputParser {
       JSON.parse(repaired);
       this.stats.repairJSONSuccess++;
       this.log.debug('JSON修复成功');
-    } catch (err: any) {
+    } catch (err: unknown) {
       this.log.warn('JSON修复后仍无法解析', { error: errMsg(err) });
     }
 
@@ -386,8 +386,9 @@ export class StructuredOutputParser {
 
             const result = self.parseJSON(args.raw as string, defaultVal);
             return JSON.stringify(result, null, 2);
-          } catch (err: any) {
-            return `❌ JSON解析失败: ${err.message}`;
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return `❌ JSON解析失败: ${msg}`;
           }
         },
       },
@@ -406,8 +407,9 @@ export class StructuredOutputParser {
           try {
             const result = self.parseList(args.raw as string);
             return JSON.stringify(result, null, 2);
-          } catch (err: any) {
-            return `❌ 列表解析失败: ${err.message}`;
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return `❌ 列表解析失败: ${msg}`;
           }
         },
       },
@@ -426,8 +428,9 @@ export class StructuredOutputParser {
           try {
             const result = self.parseKeyValue(args.raw as string);
             return JSON.stringify(result, null, 2);
-          } catch (err: any) {
-            return `❌ 键值对解析失败: ${err.message}`;
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return `❌ 键值对解析失败: ${msg}`;
           }
         },
       },
@@ -457,8 +460,9 @@ export class StructuredOutputParser {
               return '⚠️ 未找到代码块';
             }
             return result;
-          } catch (err: any) {
-            return `❌ 代码块提取失败: ${err.message}`;
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return `❌ 代码块提取失败: ${msg}`;
           }
         },
       },

@@ -644,8 +644,9 @@ export class UserPreferenceEngine {
       atomicWriteJsonSync(filePath, state);
       logger.info('偏好引擎状态已持久化', { module: 'UserPreferenceEngine', filePath, users: this.dualVectors.size });
       return true;
-    } catch (err: any) {
-      logger.error('偏好引擎状态持久化失败', { module: 'UserPreferenceEngine', error: err.message });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error('偏好引擎状态持久化失败', { module: 'UserPreferenceEngine', error: msg });
       return false;
     }
   }
@@ -685,8 +686,9 @@ export class UserPreferenceEngine {
 
       logger.info('偏好引擎状态已加载', { module: 'UserPreferenceEngine', filePath, users: this.dualVectors.size });
       return true;
-    } catch (err: any) {
-      logger.error('偏好引擎状态加载失败', { module: 'UserPreferenceEngine', error: err.message });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error('偏好引擎状态加载失败', { module: 'UserPreferenceEngine', error: msg });
       return false;
     }
   }

@@ -147,6 +147,9 @@ import { TreeSitterAST } from './tree-sitter-ast.js';
 import { GitWorktreeManager } from './git-worktree.js';
 import { AdversarialVerifier } from './adversarial-verifier.js';
 
+// ===== v21.3: Git 集成提交工具（对标 Aider auto-commit）=====
+import { GitAssistant } from './git-assistant.js';
+
 // ===== P0 Phase: 下一代智能 =====
 import { DreamingEngine } from './dreaming-engine.js';
 import { ProactiveEngine } from './proactive-engine.js';
@@ -267,6 +270,20 @@ import {
   getPlanModeToolDefinitions,
   createPlanModeToolHandler,
 } from './plan-mode.js';
+// §E @-mention 上下文引用解析器（对标 Cursor @-mention）— @file/@symbol/@web/@folder/@search 解析 + 上下文注入
+import {
+  MentionResolver,
+  getMentionToolDefinitions,
+  createMentionToolHandler,
+} from './mention-resolver.js';
+
+// ===== v21.3 主流 Agent 任务管理升级（对标 Claude Code TodoWrite）=====
+// 任务列表 + 优先级 + 单 in_progress 约束 + 进度追踪 + 持久化
+import {
+  TaskManager,
+  getTaskToolDefinitions,
+  createTaskToolHandler,
+} from './task-manager.js';
 
 // ===== Phase 8: 路线图P0/P1/P2深度实现 =====
 import { ApprovalGate } from './approval-gate.js';
@@ -442,6 +459,8 @@ export interface CoreModules {
   treeSitterAST: TreeSitterAST;
   gitWorktree: GitWorktreeManager;
   adversarialVerifier: AdversarialVerifier;
+  /** v21.3: Git 集成提交工具（对标 Aider auto-commit）— 智能生成 commit message */
+  gitAssistant: GitAssistant;
 
   // P0 Phase: 下一代智能
   dreamingEngine: DreamingEngine;
@@ -540,6 +559,10 @@ export interface CoreModules {
   repoMap: RepoMap;
   /** v21.1 §D Plan Mode 可编辑计划（状态机 + 步骤追踪 + Markdown） */
   planMode: PlanMode;
+  /** v21.3 §E @-mention 上下文引用解析器（@file/@symbol/@web/@folder/@search 解析 + 上下文注入） */
+  mentionResolver: MentionResolver;
+  /** v21.3 任务管理器（对标 Claude Code TodoWrite）— 任务列表 + 优先级 + 进度追踪 */
+  taskManager: TaskManager;
   modelRouter: ModelRouter;
   outputParser: StructuredOutputParser;
   /** P0 真实修复：虚拟内存工作流 — todo.md + 长文外接存储 */
@@ -911,6 +934,9 @@ ${ctxStr ? `对话上下文: "${ctxStr}"` : ''}
   const gitWorktree = new GitWorktreeManager();
   const adversarialVerifier = new AdversarialVerifier(modelLibrary);
 
+  // ===== v21.3: Git 集成提交工具（对标 Aider auto-commit）=====
+  const gitAssistant = new GitAssistant();
+
   // ===== P0 Phase: 下一代智能 =====
   const dreamingEngine = new DreamingEngine();
   dreamingEngine.setExtractResolver(async (content: string) => {
@@ -1249,6 +1275,16 @@ ${ctxStr ? `对话上下文: "${ctxStr}"` : ''}
       error: err instanceof Error ? err.message : String(err),
     });
   }
+
+  // §E @-mention 上下文引用解析器（对标 Cursor @-mention）
+  // 解析 @file/@symbol/@web/@folder/@search 并注入上下文，让 agent 精准获取用户引用的内容
+  const mentionResolver = new MentionResolver({ projectRoot: process.cwd() });
+  logger.info('v21.3 §E: @-mention 上下文引用解析器已创建', { module: 'Bootstrap' });
+
+  // v21.3: 任务管理器（对标 Claude Code TodoWrite）
+  // 让 agent 在执行复杂多步骤任务时创建/更新/查询待办列表，跟踪进度
+  const taskManager = new TaskManager();
+  logger.info('v21.3: 任务管理器已创建（对标 Claude Code TodoWrite）', { module: 'Bootstrap' });
 
   toolContext.projectContext = projectContext;
 
@@ -1719,6 +1755,8 @@ ${ctxStr ? `对话上下文: "${ctxStr}"` : ''}
     serviceIntegrations,
     // Phase 2
     treeSitterAST, gitWorktree, adversarialVerifier,
+    // v21.3: Git 集成提交工具
+    gitAssistant,
     // P0 Phase: 下一代智能
     dreamingEngine, proactiveEngine, dreamingBridge, memoryStore, toolMasking, sessionReplay,
     // Phase 3
@@ -1744,6 +1782,10 @@ ${ctxStr ? `对话上下文: "${ctxStr}"` : ''}
     enhancedLifecycleHookManager, agentsMdLoader, agentsMdInitializer, fileContextEngine, asyncTaskManager,
     // v21.1 新增模块
     specDrivenDev, repoMap, planMode,
+    // v21.3 §E @-mention 上下文引用解析器
+    mentionResolver,
+    // v21.3 任务管理器
+    taskManager,
     modelRouter, outputParser,
     // Phase 8
     approvalGate, ethicsReviewEngine, codeKnowledgeGraph, sotaBenchmarkScheduler, selfHealing, consistencyGuard, agentConfig, contextSelector,
@@ -1796,6 +1838,8 @@ ${ctxStr ? `对话上下文: "${ctxStr}"` : ''}
         backgroundAgentManager,
         // 资源生命周期补齐：lspIntegration 持有 spawn 的 LSP 子进程，不 dispose 会遗留孤儿进程
         lspIntegration,
+        // v21.3: taskManager 含 saveTimer + exit 监听器，不 dispose 会泄漏定时器并丢失 pending 数据
+        taskManager,
       ];
       for (const m of disposable) {
         try { (m as { dispose?: () => void })?.dispose?.(); } catch {}
@@ -1830,6 +1874,8 @@ ${ctxStr ? `对话上下文: "${ctxStr}"` : ''}
         backgroundAgentManager,
         // 资源生命周期补齐：lspIntegration 持有 spawn 的 LSP 子进程，不 dispose 会遗留孤儿进程
         lspIntegration,
+        // v21.3: taskManager 含 saveTimer + exit 监听器，不 dispose 会泄漏定时器并丢失 pending 数据
+        taskManager,
       ];
       for (const m of disposable) {
         try { (m as { dispose?: () => void })?.dispose?.(); } catch {}
@@ -2307,6 +2353,8 @@ export function createAgentLoop(
     ['unifiedMemory',       () => modules.unifiedMemory.getToolDefinitions()],
     ['treeSitterAST',       () => modules.treeSitterAST.getToolDefinitions()],
     ['gitWorktree',         () => modules.gitWorktree.getToolDefinitions()],
+    // v21.3: Git 集成提交工具（git_status/git_diff/git_commit/git_smart_commit/git_log/git_branch/git_undo/git_push）
+    ['gitAssistant',        () => modules.gitAssistant.getToolDefinitions()],
     ['adversarialVerifier', () => modules.adversarialVerifier.getToolDefinitions()],
     ['voiceSystem',         () => modules.voiceSystem.getToolDefinitions()],
     ['videoGenReal',        () => modules.videoGenReal.getToolDefinitions()],
@@ -2654,6 +2702,27 @@ export function createAgentLoop(
     logger.warn('v21.1 §D: Plan Mode 工具注册失败', { module: 'Bootstrap', error: e instanceof Error ? e.message : String(e) });
   }
 
+  // §E @-mention 上下文引用解析工具（mention_resolve/mention_search）
+  try {
+    const mentionHandler = createMentionToolHandler(modules.mentionResolver);
+    const mentionRawDefs = getMentionToolDefinitions();
+    const mentionToolDefs: ToolDef[] = mentionRawDefs.map(d => ({
+      name: d.name,
+      description: d.description,
+      parameters: {},
+      execute: async (args: Record<string, unknown>) => {
+        const result = await mentionHandler(d.name, args);
+        return typeof result === 'string' ? result : JSON.stringify(result);
+      },
+      readOnly: true,
+    }));
+    loop.registerTools(mentionToolDefs);
+    registeredCount += mentionToolDefs.length;
+    logger.info('v21.3 §E: @-mention 上下文引用解析工具已注册', { module: 'Bootstrap', count: mentionToolDefs.length });
+  } catch (e: unknown) {
+    logger.warn('v21.3 §E: @-mention 上下文引用解析工具注册失败', { module: 'Bootstrap', error: e instanceof Error ? e.message : String(e) });
+  }
+
   // §E Agent 团队编排工具（team_run_template/list_templates/get_template_info/get_executions/get_execution/get_board/clear_board）
   try {
     const agentTeamHandler = createAgentTeamToolHandler(modules.agentTeamOrchestrator);
@@ -2695,6 +2764,28 @@ export function createAgentLoop(
     logger.info('v21.1 §F: SubAgent 编排工具已注册（含 run_in_background 后台模式）', { module: 'Bootstrap', count: subAgentToolDefs.length });
   } catch (e: unknown) {
     logger.warn('v21.1 §F: SubAgent 编排工具注册失败', { module: 'Bootstrap', error: e instanceof Error ? e.message : String(e) });
+  }
+
+  // ===== v21.3 注册任务管理工具（对标 Claude Code TodoWrite）=====
+  // task_create / task_update / task_list / task_delete / task_stats
+  try {
+    const taskHandler = createTaskToolHandler(modules.taskManager);
+    const taskRawDefs = getTaskToolDefinitions();
+    const taskToolDefs: ToolDef[] = taskRawDefs.map(d => ({
+      name: d.name,
+      description: d.description,
+      parameters: {},
+      execute: async (args: Record<string, unknown>) => {
+        const result = await taskHandler(d.name, args);
+        return typeof result === 'string' ? result : JSON.stringify(result);
+      },
+      readOnly: false,
+    }));
+    loop.registerTools(taskToolDefs);
+    registeredCount += taskToolDefs.length;
+    logger.info('v21.3: 任务管理工具已注册（对标 Claude Code TodoWrite）', { module: 'Bootstrap', count: taskToolDefs.length });
+  } catch (e: unknown) {
+    logger.warn('v21.3: 任务管理工具注册失败', { module: 'Bootstrap', error: e instanceof Error ? e.message : String(e) });
   }
 
   // 工作流工具：视频/测试/文档/图像生成

@@ -254,7 +254,7 @@ export class Brain {
         evolutionHistory: this.evolutionHistory,
         personality: this.personality,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('保存大脑数据失败:', error);
     }
   }
@@ -420,9 +420,10 @@ export class Brain {
         },
       });
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       this.errorCount++;
-      response = `处理请求时发生错误: ${error.message}`;
+      const msg = error instanceof Error ? error.message : String(error);
+      response = `处理请求时发生错误: ${msg}`;
       confidence = 0.1;
     }
 
@@ -730,7 +731,7 @@ export class Brain {
       // 4. 学习模式
       learnedPatterns.push(`任务类型"${understanding.surfaceIntent}"适用"${understanding.suggestedApproach}"方法`);
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       result = `执行过程中遇到问题: ${errMsg(error)}。已自动切换到安全模式。`;
       learnedPatterns.push(`错误模式: ${understanding.surfaceIntent}可能触发${errMsg(error)}`);
     }
@@ -1222,8 +1223,9 @@ ${i.content}
       }
 
       return '需要配置 AI API 密钥 (支持 Claude / DeepSeek / OpenRouter / OpenAI)';
-    } catch (error: any) {
-      return `AI调用失败: ${error.message}`;
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      return `AI调用失败: ${msg}`;
     }
   }
 

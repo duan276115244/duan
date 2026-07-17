@@ -352,8 +352,9 @@ export class AutonomousEngineer {
     const filePath = path.join(this.tasksDir, `${taskId}.json`);
     try {
       await atomicWriteJson(filePath, task);
-    } catch (e) {
-      this.log.error('工程任务持久化失败', { taskId, error: (e as Error).message });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      this.log.error('工程任务持久化失败', { taskId, error: msg });
       throw e;
     }
   }
