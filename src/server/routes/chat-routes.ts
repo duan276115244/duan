@@ -665,6 +665,10 @@ app.post('/api/opencode/chat', (req: express.Request, res: express.Response) => 
       res.write(`data: ${JSON.stringify(data)}\n\n`);
     };
 
+    // 跟踪客户端断开：避免客户端导航离开后继续写入已关闭的 res
+    let clientDisconnected = false;
+    res.on('close', () => { clientDisconnected = true; });
+
     try {
       sendEvent({ type: 'start', timestamp: Date.now() });
 
@@ -677,6 +681,7 @@ app.post('/api/opencode/chat', (req: express.Request, res: express.Response) => 
       const chars = responseText.split('');
       let buffer = '';
       for (let i = 0; i < chars.length; i++) {
+        if (clientDisconnected) break;
         buffer += chars[i];
         if (buffer.length >= 3 || i === chars.length - 1) {
           sendEvent({ type: 'content', content: buffer, done: false });
@@ -685,9 +690,14 @@ app.post('/api/opencode/chat', (req: express.Request, res: express.Response) => 
         }
       }
 
-      sendEvent({ type: 'done', timestamp: Date.now() });
+      if (!clientDisconnected) {
+        sendEvent({ type: 'done', timestamp: Date.now() });
+      }
     } catch (error) {
-      sendEvent({ type: 'error', error: errMsg(error) });
+      // 与 /api/chat/stream 已修复的写法保持一致：用 content 字段（前端 useApi.ts 读 content）
+      if (!clientDisconnected) {
+        sendEvent({ type: 'error', content: errMsg(error) });
+      }
     }
 
     res.end();

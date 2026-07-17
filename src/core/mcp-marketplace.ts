@@ -782,10 +782,11 @@ export class MCPMarketplace {
   private isDependencyAvailable(dep: string): boolean {
     try {
       // 简单检查：通过 which/where 命令验证
+      // 安全：用 execFileSync + 数组参数 + shell:false，杜绝 shell 元字符注入（dep 来源于插件元数据，可能被第三方污染）
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { execSync } = require('child_process');
+      const { execFileSync } = require('child_process');
       const cmd = process.platform === 'win32' ? 'where' : 'which';
-      execSync(`${cmd} ${dep}`, { stdio: 'ignore' });
+      execFileSync(cmd, [dep], { stdio: 'ignore', shell: false });
       return true;
     } catch {
       return false;

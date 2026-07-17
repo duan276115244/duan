@@ -19,7 +19,7 @@
 import * as os from 'os';
 import * as fs from 'fs';
 import * as path from 'path';
-import { execSync } from 'child_process';
+import { execSync, execFileSync } from 'child_process';
 import { logger } from './structured-logger.js';
 
 // ============ 类型定义 ============
@@ -277,8 +277,9 @@ export class NativePlatform {
   commandExists(cmd: string): boolean {
     try {
       // which 在 Linux/macOS，where 在 Windows
+      // 安全：用 execFileSync + 数组参数 + shell:false，杜绝 shell 元字符注入
       const checkCmd = this.isWindows() ? 'where' : 'which';
-      execSync(`${checkCmd} ${cmd} 2>/dev/null`, { stdio: 'pipe', timeout: 3000 });
+      execFileSync(checkCmd, [cmd], { stdio: 'pipe', timeout: 3000, shell: false });
       return true;
     } catch {
       return false;

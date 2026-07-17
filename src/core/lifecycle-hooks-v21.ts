@@ -12,7 +12,7 @@
  * 另含配置文件加载器：从 .duan/settings.json 的 hooks 字段加载用户自定义钩子配置
  */
 
-import { execSync } from 'child_process';
+import { execSync, execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import {
@@ -25,6 +25,7 @@ import {
 } from './lifecycle-hooks.js';
 import { atomicWriteJsonSync } from './atomic-write.js';
 import { duanPath } from './duan-paths.js';
+import { matchDangerousCommand } from './security-config.js';
 
 // ============ 1. 项目上下文钩子 ============
 
@@ -145,29 +146,31 @@ export class StopNotificationHook {
     try {
       if (this.platform === 'win32') {
         // Windows: 使用 PowerShell toast 通知
+        // 安全：用 -EncodedCommand + Base64 避免 title/message 中的 shell 元字符注入
         const psScript = `
           [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
           $template = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02)
           $textNodes = $template.GetElementsByTagName("text")
-          $textNodes.Item(0).AppendChild($template.CreateTextNode("${title.replace(/"/g, '')}")) | Out-Null
-          $textNodes.Item(1).AppendChild($template.CreateTextNode("${message.replace(/"/g, '')}")) | Out-Null
+          $textNodes.Item(0).AppendChild($template.CreateTextNode([System.String]::Join('', ${JSON.stringify(title).replace(/^"|"$/g, "'")}.ToCharArray()))) | Out-Null
+          $textNodes.Item(1).AppendChild($template.CreateTextNode([System.String]::Join('', ${JSON.stringify(message).replace(/^"|"$/g, "'")}.ToCharArray()))) | Out-Null
           $toast = [Windows.UI.Notifications.ToastNotification]::new($template)
           [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("段先生").Show($toast)
         `;
-        execSync(`powershell -NoProfile -Command "${psScript.replace(/\n/g, ' ')}"`, {
+        const encoded = Buffer.from(psScript, 'utf16le').toString('base64');
+        execFileSync('powershell', ['-NoProfile', '-EncodedCommand', encoded], {
           timeout: 5000,
           stdio: 'ignore',
+          shell: false,
         });
       } else if (this.platform === 'darwin') {
         // macOS: 使用 osascript
-        const script = `display notification "${message.replace(/"/g, '\\"')}" with title "${title.replace(/"/g, '\\"')}"${this.sound ? ' sound name "Glass"' : ''}`;
-        execSync(`osascript -e '${script}'`, { timeout: 5000, stdio: 'ignore' });
+        // 安全：execFileSync + 数组参数，title/message 作为独立参数传递，不经过 shell 解释
+        const script = `display notification ${JSON.stringify(message)} with title ${JSON.stringify(title)}${this.sound ? ' sound name "Glass"' : ''}`;
+        execFileSync('osascript', ['-e', script], { timeout: 5000, stdio: 'ignore', shell: false });
       } else {
         // Linux: 使用 notify-send
-        execSync(`notify-send "${title.replace(/"/g, '')}" "${message.replace(/"/g, '')}"`, {
-          timeout: 5000,
-          stdio: 'ignore',
-        });
+        // 安全：execFileSync + 数组参数，title/message 作为独立参数传递
+        execFileSync('notify-send', [title, message], { timeout: 5000, stdio: 'ignore', shell: false });
       }
     } catch {
       // 通知失败不影响主流程
@@ -307,10 +310,12 @@ export class AutoFormatHook {
       if (!formatter) continue;
 
       try {
-        execSync(`${formatter.cmd} ${formatter.args.join(' ')} "${file}"`, {
+        // 安全：execFileSync + 数组参数 + shell:false，file 作为独立参数传递不经过 shell 解释
+        execFileSync(formatter.cmd, [...formatter.args, file], {
           timeout: 10000,
           stdio: 'ignore',
           cwd: path.dirname(file),
+          shell: false,
         });
         formattedFiles.push(file);
       } catch {
@@ -738,6 +743,17 @@ export function createHooksToolHandler(manager: LifecycleHookManager) {
           priority?: number;
           command: string;
         };
+        // 安全：拦截危险命令（rm -rf / del /f format 等），防止 LLM 被诱导执行破坏性操作
+        const danger = matchDangerousCommand(command);
+        if (danger) {
+          return {
+            registered: false,
+            event,
+            name,
+            error: `命令被安全策略拦截：匹配危险模式 ${danger.source}`,
+            pattern: danger.source,
+          };
+        }
         const handler: HookHandler = {
           name,
           priority: priority ?? 100,

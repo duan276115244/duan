@@ -11,7 +11,7 @@
  * 4. Puppeteer launch 选项生成
  */
 
-import { execSync } from 'child_process';
+import { execSync, execFileSync } from 'child_process';
 import * as fs from 'fs';
 import { logger } from './structured-logger.js';
 import { getNativePlatform, type PlatformInfo } from './native-platform.js';
@@ -325,10 +325,12 @@ export class NativeDepsResolver {
   /** 执行 which/where 查找可执行文件 */
   private findExecutable(cmd: string, name: string): string | null {
     try {
-      const output = execSync(`${cmd} ${name} 2>/dev/null`, {
+      // 安全：用 execFileSync + 数组参数 + shell:false，杜绝 shell 元字符注入
+      const output = execFileSync(cmd, [name], {
         stdio: 'pipe',
         timeout: 3000,
         encoding: 'utf-8',
+        shell: false,
       }).trim();
       // which 可能返回多行，取第一个
       const first = output.split('\n')[0].trim();
