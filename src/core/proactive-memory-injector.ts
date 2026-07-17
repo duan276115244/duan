@@ -77,6 +77,12 @@ export class ProactiveMemoryInjector {
   private experiencesCacheTime: number = 0;
   private static readonly EXPERIENCES_CACHE_TTL = 30_000; // 30秒缓存
 
+  /** memoryDir 全量扫描缓存：loadErrorMemories 与 loadSkillPatterns 共用，避免同目录被重复扫描 2-3 次 */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private memoryDirCache: Array<{ data: any; file: string }> | null = null;
+  private memoryDirCacheTime: number = 0;
+  private static readonly MEMORY_DIR_CACHE_TTL = 30_000; // 30秒缓存
+
   /** Hermes：重要性衰减半衰期（30 天） */
   private readonly DECAY_HALFLIFE_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -443,25 +449,49 @@ export class ProactiveMemoryInjector {
     return results;
   }
 
-  private loadErrorMemories(): Array<{ content: string; tags: string[]; timestamp: number; relevance: number }> {
-    const results: Array<{ content: string; tags: string[]; timestamp: number; relevance: number }> = [];
+  /**
+   * 扫描 memoryDir 全量并缓存（带 TTL）。
+   * loadErrorMemories 与 loadSkillPatterns 共用此缓存，避免同目录在一次注入流程中被重复扫描 2-3 次。
+   * 返回解析后的 { data, file } 数组，调用方按 data.type 自行过滤。
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private loadMemoryDirCached(): Array<{ data: any; file: string }> {
+    const now = Date.now();
+    if (this.memoryDirCache && now - this.memoryDirCacheTime < ProactiveMemoryInjector.MEMORY_DIR_CACHE_TTL) {
+      return this.memoryDirCache;
+    }
+    const results: Array<{ data: any; file: string }> = [];
     try {
-      if (!fs.existsSync(this.memoryDir)) return results;
+      if (!fs.existsSync(this.memoryDir)) {
+        this.memoryDirCache = results;
+        this.memoryDirCacheTime = now;
+        return results;
+      }
       for (const file of fs.readdirSync(this.memoryDir)) {
         if (!file.endsWith('.json')) continue;
         try {
           const data = JSON.parse(fs.readFileSync(path.join(this.memoryDir, file), 'utf-8'));
-          if (data.type === 'error' || data.type === 'mistake' || data.type === 'correction' || data.type === 'doom_loop') {
-            results.push({
-              content: data.content || '',
-              tags: data.tags || [],
-              timestamp: data.timestamp || 0,
-              relevance: 0,
-            });
-          }
+          results.push({ data, file });
         } catch {}
       }
     } catch {}
+    this.memoryDirCache = results;
+    this.memoryDirCacheTime = now;
+    return results;
+  }
+
+  private loadErrorMemories(): Array<{ content: string; tags: string[]; timestamp: number; relevance: number }> {
+    const results: Array<{ content: string; tags: string[]; timestamp: number; relevance: number }> = [];
+    for (const { data } of this.loadMemoryDirCached()) {
+      if (data.type === 'error' || data.type === 'mistake' || data.type === 'correction' || data.type === 'doom_loop') {
+        results.push({
+          content: data.content || '',
+          tags: data.tags || [],
+          timestamp: data.timestamp || 0,
+          relevance: 0,
+        });
+      }
+    }
     return results;
   }
 
@@ -479,36 +509,30 @@ export class ProactiveMemoryInjector {
     const results: Array<{ content: string; tags: string[]; relevance: number }> = [];
     try {
       const skillsPath = path.join(this.learningDir, 'skills.json');
-      if (!fs.existsSync(skillsPath)) return results;
-      const data = JSON.parse(fs.readFileSync(skillsPath, 'utf-8'));
-      if (Array.isArray(data)) {
-        for (const skill of data) {
-          results.push({
-            content: skill.description || skill.content || skill.name || '',
-            tags: skill.tags || skill.keywords || [],
-            relevance: 0,
-          });
+      if (fs.existsSync(skillsPath)) {
+        const data = JSON.parse(fs.readFileSync(skillsPath, 'utf-8'));
+        if (Array.isArray(data)) {
+          for (const skill of data) {
+            results.push({
+              content: skill.description || skill.content || skill.name || '',
+              tags: skill.tags || skill.keywords || [],
+              relevance: 0,
+            });
+          }
         }
       }
     } catch {}
 
-    // 也从 .duan/memories/ 中加载 skill 类型
-    try {
-      if (!fs.existsSync(this.memoryDir)) return results;
-      for (const file of fs.readdirSync(this.memoryDir)) {
-        if (!file.endsWith('.json')) continue;
-        try {
-          const data = JSON.parse(fs.readFileSync(path.join(this.memoryDir, file), 'utf-8'));
-          if (data.type === 'skill' || data.type === 'best_practice' || data.type === 'pattern') {
-            results.push({
-              content: data.content || '',
-              tags: data.tags || [],
-              relevance: 0,
-            });
-          }
-        } catch {}
+    // 也从 .duan/memories/ 中加载 skill 类型（复用 memoryDirCache，避免重复扫描）
+    for (const { data } of this.loadMemoryDirCached()) {
+      if (data.type === 'skill' || data.type === 'best_practice' || data.type === 'pattern') {
+        results.push({
+          content: data.content || '',
+          tags: data.tags || [],
+          relevance: 0,
+        });
       }
-    } catch {}
+    }
 
     return results;
   }

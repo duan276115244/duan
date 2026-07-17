@@ -2158,8 +2158,10 @@ export class ModelLibrary {
       }
     }
     if (oldestKey) {
-      // OpenAI/Anthropic SDK 内部用 fetch，无显式 close 方法
-      // 从 Map 移除让 GC 可回收客户端实例及其底层 HTTP 连接池
+      const client = this.clients.get(oldestKey);
+      // 尝试主动释放底层 HTTP 连接池，避免等 GC 才回收 socket（长时间运行 + 频繁切换 20+ 模型时可能耗尽 FD）
+      // OpenAI/Anthropic SDK 无统一的 public close API，用渐进式探测：优先调 close/destroy/dispose，再尝试 httpAgent.destroy
+      this.tryReleaseClientResources(client, oldestKey);
       this.clients.delete(oldestKey);
       this.clientLastUsed.delete(oldestKey);
       console.warn(`[ModelLibrary] P0 LRU 淘汰: 客户端 ${oldestKey} 已淘汰（最久未使用，${new Date(oldestTime).toISOString()}）`);
@@ -2174,10 +2176,51 @@ export class ModelLibrary {
    */
   dispose(): void {
     const count = this.clients.size;
+    for (const [key, client] of this.clients) {
+      this.tryReleaseClientResources(client, key);
+    }
     this.clients.clear();
     this.clientLastUsed.clear();
     if (count > 0) {
       console.warn(`[ModelLibrary] P0 dispose: 已释放 ${count} 个客户端实例`);
+    }
+  }
+
+  /**
+   * 渐进式探测并释放 SDK 客户端底层 HTTP 连接池资源。
+   * OpenAI/Anthropic SDK 无统一 public close API，按以下顺序尝试：
+   * 1. close() — 部分版本提供
+   * 2. destroy() — undici Agent/Pool 模式
+   * 3. dispose() — 通用协议
+   * 4. httpAgent.destroy() — Node.js http.Agent 模式
+   * 5. _client?.destroy?.() / _options?.httpAgent?.destroy?.() — SDK 内部字段探测
+   * 任何一步失败都不影响后续步骤，最终降级为仅从 Map 移除（由 GC 回收）。
+   */
+  private tryReleaseClientResources(client: OpenAI | Anthropic | undefined, key: string): void {
+    if (!client) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const c = client as any;
+    const tried: string[] = [];
+    const attempt = (label: string, fn: () => unknown) => {
+      try {
+        const ret = fn();
+        if (ret !== undefined) {
+          tried.push(label);
+          return true;
+        }
+      } catch {
+        // 该方法不存在或失败，继续尝试下一个
+      }
+      return false;
+    };
+    attempt('close', () => c.close?.());
+    attempt('destroy', () => c.destroy?.());
+    attempt('dispose', () => c.dispose?.());
+    attempt('httpAgent.destroy', () => c.httpAgent?.destroy?.());
+    attempt('_client.destroy', () => c._client?.destroy?.());
+    attempt('_options.httpAgent.destroy', () => c._options?.httpAgent?.destroy?.());
+    if (tried.length > 0) {
+      console.warn(`[ModelLibrary] 客户端 ${key} 资源释放方式: ${tried.join(', ')}`);
     }
   }
 

@@ -334,7 +334,7 @@ describe('GitAssistant', () => {
       expect(log).toHaveLength(2);
       expect(log[0].subject).toBe('commit 4');
       expect(log[1].subject).toBe('commit 3');
-    });
+    }, 120000); // 120s：5 次 git add+commit 在全量 118 文件并行 I/O 下偶发 >60s
 
     it('返回完整 CommitInfo 结构', async () => {
       writeAndCommit(tmpDir, 'a.txt', 'a', 'subject line');

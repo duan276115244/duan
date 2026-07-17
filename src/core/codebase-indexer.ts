@@ -230,9 +230,9 @@ export class CodebaseIndexer {
     this.symbolIndex.clear();
 
     const files = await this.scanFiles();
-    for (const filePath of files) {
-      await this.indexFile(filePath);
-    }
+    // 并发索引：文件 I/O 是主要瓶颈（readFile），并发池提升大代码库索引速度。
+    // extractSymbols/extractImports 是同步代码，JS 单线程事件循环保证其原子性，无 regex.lastIndex 竞态。
+    await this.indexFilesConcurrent(files, 8);
 
     this.rebuildSymbolIndex();
     this.isIndexed = true;
@@ -248,6 +248,27 @@ export class CodebaseIndexer {
     return this.stats;
   }
 
+  /**
+   * 并发索引文件池：限制并发度避免一次性打开过多 FD。
+   * @param files 文件路径列表
+   * @param concurrency 并发度（默认 8，平衡 I/O 吞吐与 FD 消耗）
+   */
+  private async indexFilesConcurrent(files: string[], concurrency: number = 8): Promise<void> {
+    let cursor = 0;
+    const workers: Promise<void>[] = [];
+    const worker = async (): Promise<void> => {
+      while (cursor < files.length) {
+        const idx = cursor++;
+        await this.indexFile(files[idx]);
+      }
+    };
+    const n = Math.min(concurrency, files.length);
+    for (let i = 0; i < n; i++) {
+      workers.push(worker());
+    }
+    await Promise.all(workers);
+  }
+
   /** 增量更新索引（仅重索引变化的文件） */
   async updateIncremental(): Promise<{ added: number; updated: number; removed: number }> {
     if (!this.isIndexed) {
@@ -258,20 +279,23 @@ export class CodebaseIndexer {
     const currentFiles = new Set(await this.scanFiles());
     let added = 0, updated = 0, removed = 0;
 
-    // 检查新增和变更的文件
+    // 先收集需要重索引的文件（新增 + mtime 变更），再并发处理
+    const toReindex: string[] = [];
     for (const filePath of currentFiles) {
       const existing = this.index.get(filePath);
       if (!existing) {
-        await this.indexFile(filePath);
+        toReindex.push(filePath);
         added++;
       } else {
         const mtime = await this.getFileMtime(filePath);
         if (mtime > existing.mtime) {
-          await this.indexFile(filePath);
+          toReindex.push(filePath);
           updated++;
         }
       }
     }
+    // 并发重索引（与 buildIndex 同策略，并发度 8）
+    await this.indexFilesConcurrent(toReindex, 8);
 
     // 检查删除的文件
     for (const [filePath] of this.index) {
